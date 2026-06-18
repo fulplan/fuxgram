@@ -1,0 +1,522 @@
+{
+  "aadjoininfo": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/aadjoininfo.x64.o",
+    "arch": "x64"
+  },
+  "adcs_enum": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/adcs_enum.x64.o",
+    "arch": "x64"
+  },
+  "adcs_enum_com": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/adcs_enum_com.x64.o",
+    "arch": "x64"
+  },
+  "adcs_enum_com2": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/adcs_enum_com2.x64.o",
+    "arch": "x64"
+  },
+  "adv_audit_policies": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/adv_audit_policies.x64.o",
+    "arch": "x64"
+  },
+  "arp": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/arp.x64.o",
+    "arch": "x64"
+  },
+  "cacls": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/cacls.x64.o",
+    "arch": "x64"
+  },
+  "dir": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/dir.x64.o",
+    "arch": "x64"
+  },
+  "driversigs": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/driversigs.x64.o",
+    "arch": "x64"
+  },
+  "enumLocalSessions": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/enumLocalSessions.x64.o",
+    "arch": "x64"
+  },
+  "env": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/env.x64.o",
+    "arch": "x64"
+  },
+  "findLoadedModule": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/findLoadedModule.x64.o",
+    "arch": "x64"
+  },
+  "get_password_policy": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/get_password_policy.x64.o",
+    "arch": "x64"
+  },
+  "get_session_info": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/get_session_info.x64.o",
+    "arch": "x64"
+  },
+  "ipconfig": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/ipconfig.x64.o",
+    "arch": "x64"
+  },
+  "ldapsearch": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/ldapsearch.x64.o",
+    "arch": "x64"
+  },
+  "ldapsecuritycheck": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/ldapsecuritycheck.x64.o",
+    "arch": "x64"
+  },
+  "list_firewall_rules": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/list_firewall_rules.x64.o",
+    "arch": "x64"
+  },
+  "listdns": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/listdns.x64.o",
+    "arch": "x64"
+  },
+  "listmods": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/listmods.x64.o",
+    "arch": "x64"
+  },
+  "locale": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/locale.x64.o",
+    "arch": "x64"
+  },
+  "netgroup": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netgroup.x64.o",
+    "arch": "x64"
+  },
+  "netlocalgroup": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netlocalgroup.x64.o",
+    "arch": "x64"
+  },
+  "netloggedon": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netloggedon.x64.o",
+    "arch": "x64"
+  },
+  "netshares": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netshares.x64.o",
+    "arch": "x64"
+  },
+  "netstat": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netstat.x64.o",
+    "arch": "x64"
+  },
+  "nettime": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/nettime.x64.o",
+    "arch": "x64"
+  },
+  "netuptime": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netuptime.x64.o",
+    "arch": "x64"
+  },
+  "netuse": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netuse.x64.o",
+    "arch": "x64"
+  },
+  "netuser": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netuser.x64.o",
+    "arch": "x64"
+  },
+  "netview": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/netview.x64.o",
+    "arch": "x64"
+  },
+  "nonpagedldapsearch": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/nonpagedldapsearch.x64.o",
+    "arch": "x64"
+  },
+  "nslookup": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/nslookup.x64.o",
+    "arch": "x64"
+  },
+  "reg_query": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/reg_query.x64.o",
+    "arch": "x64"
+  },
+  "resources": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/resources.x64.o",
+    "arch": "x64"
+  },
+  "routeprint": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/routeprint.x64.o",
+    "arch": "x64"
+  },
+  "sc_enum": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/sc_enum.x64.o",
+    "arch": "x64"
+  },
+  "sc_qc": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/sc_qc.x64.o",
+    "arch": "x64"
+  },
+  "sc_qdescription": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/sc_qdescription.x64.o",
+    "arch": "x64"
+  },
+  "sc_qtriggerinfo": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/sc_qtriggerinfo.x64.o",
+    "arch": "x64"
+  },
+  "sc_query": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/sc_query.x64.o",
+    "arch": "x64"
+  },
+  "schtasksenum": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/schtasksenum.x64.o",
+    "arch": "x64"
+  },
+  "schtasksquery": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/schtasksquery.x64.o",
+    "arch": "x64"
+  },
+  "tasklist": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/tasklist.x64.o",
+    "arch": "x64"
+  },
+  "uptime": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/uptime.x64.o",
+    "arch": "x64"
+  },
+  "useridletime": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/useridletime.x64.o",
+    "arch": "x64"
+  },
+  "vssenum": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/vssenum.x64.o",
+    "arch": "x64"
+  },
+  "whoami": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/whoami.x64.o",
+    "arch": "x64"
+  },
+  "windowlist": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/windowlist.x64.o",
+    "arch": "x64"
+  },
+  "wmi_query": {
+    "category": "recon",
+    "path": "fitnah/bofs/recon/wmi_query.x64.o",
+    "arch": "x64"
+  },
+  "clipboardinject": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/clipboardinject.x64.o",
+    "arch": "x64"
+  },
+  "conhost": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/conhost.x64.o",
+    "arch": "x64"
+  },
+  "createremotethread": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/createremotethread.x64.o",
+    "arch": "x64"
+  },
+  "ctray": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/ctray.x64.o",
+    "arch": "x64"
+  },
+  "dde": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/dde.x64.o",
+    "arch": "x64"
+  },
+  "kernelcallbacktable": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/kernelcallbacktable.x64.o",
+    "arch": "x64"
+  },
+  "ntcreatethread": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/ntcreatethread.x64.o",
+    "arch": "x64"
+  },
+  "ntqueueapcthread": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/ntqueueapcthread.x64.o",
+    "arch": "x64"
+  },
+  "setthreadcontext": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/setthreadcontext.x64.o",
+    "arch": "x64"
+  },
+  "tooltip": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/tooltip.x64.o",
+    "arch": "x64"
+  },
+  "uxsubclassinfo": {
+    "category": "execution",
+    "path": "fitnah/bofs/execution/uxsubclassinfo.x64.o",
+    "arch": "x64"
+  },
+  "adcs_request": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/adcs_request.x64.o",
+    "arch": "x64"
+  },
+  "adcs_request_on_behalf": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/adcs_request_on_behalf.x64.o",
+    "arch": "x64"
+  },
+  "ask_mfa": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/ask_mfa.x64.o",
+    "arch": "x64"
+  },
+  "chromeKey": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/chromeKey.x64.o",
+    "arch": "x64"
+  },
+  "get_azure_token": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/get_azure_token.x64.o",
+    "arch": "x64"
+  },
+  "get_dpapi_system": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/get_dpapi_system.x64.o",
+    "arch": "x64"
+  },
+  "global_unprotect": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/global_unprotect.x64.o",
+    "arch": "x64"
+  },
+  "lastpass": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/lastpass.x64.o",
+    "arch": "x64"
+  },
+  "md5": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/md5.x64.o",
+    "arch": "x64"
+  },
+  "office_tokens": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/office_tokens.x64.o",
+    "arch": "x64"
+  },
+  "procdump": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/procdump.x64.o",
+    "arch": "x64"
+  },
+  "sha1": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/sha1.x64.o",
+    "arch": "x64"
+  },
+  "sha256": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/sha256.x64.o",
+    "arch": "x64"
+  },
+  "slack_cookie": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/slack_cookie.x64.o",
+    "arch": "x64"
+  },
+  "slackKey": {
+    "category": "credential_access",
+    "path": "fitnah/bofs/credential_access/slackKey.x64.o",
+    "arch": "x64"
+  },
+  "ghost_task": {
+    "category": "defense_evasion",
+    "path": "fitnah/bofs/defense_evasion/ghost_task.x64.o",
+    "arch": "x64"
+  },
+  "reg_delete": {
+    "category": "defense_evasion",
+    "path": "fitnah/bofs/defense_evasion/reg_delete.x64.o",
+    "arch": "x64"
+  },
+  "reg_save": {
+    "category": "defense_evasion",
+    "path": "fitnah/bofs/defense_evasion/reg_save.x64.o",
+    "arch": "x64"
+  },
+  "reg_set": {
+    "category": "defense_evasion",
+    "path": "fitnah/bofs/defense_evasion/reg_set.x64.o",
+    "arch": "x64"
+  },
+  "adduser": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/adduser.x64.o",
+    "arch": "x64"
+  },
+  "addusertogroup": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/addusertogroup.x64.o",
+    "arch": "x64"
+  },
+  "disableuser": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/disableuser.x64.o",
+    "arch": "x64"
+  },
+  "enableuser": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/enableuser.x64.o",
+    "arch": "x64"
+  },
+  "get_priv": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/get_priv.x64.o",
+    "arch": "x64"
+  },
+  "make_token_cert": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/make_token_cert.x64.o",
+    "arch": "x64"
+  },
+  "ProcessDestroy": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/ProcessDestroy.x64.o",
+    "arch": "x64"
+  },
+  "ProcessListHandles": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/ProcessListHandles.x64.o",
+    "arch": "x64"
+  },
+  "sc_config": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_config.x64.o",
+    "arch": "x64"
+  },
+  "sc_create": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_create.x64.o",
+    "arch": "x64"
+  },
+  "sc_delete": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_delete.x64.o",
+    "arch": "x64"
+  },
+  "sc_description": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_description.x64.o",
+    "arch": "x64"
+  },
+  "sc_failure": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_failure.x64.o",
+    "arch": "x64"
+  },
+  "sc_start": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_start.x64.o",
+    "arch": "x64"
+  },
+  "sc_stop": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/sc_stop.x64.o",
+    "arch": "x64"
+  },
+  "schtaskscreate": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/schtaskscreate.x64.o",
+    "arch": "x64"
+  },
+  "schtasksdelete": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/schtasksdelete.x64.o",
+    "arch": "x64"
+  },
+  "schtasksrun": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/schtasksrun.x64.o",
+    "arch": "x64"
+  },
+  "schtasksstop": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/schtasksstop.x64.o",
+    "arch": "x64"
+  },
+  "setuserpass": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/setuserpass.x64.o",
+    "arch": "x64"
+  },
+  "shspawnas": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/shspawnas.x64.o",
+    "arch": "x64"
+  },
+  "shutdown": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/shutdown.x64.o",
+    "arch": "x64"
+  },
+  "suspendresume": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/suspendresume.x64.o",
+    "arch": "x64"
+  },
+  "unexpireuser": {
+    "category": "lateral_movement",
+    "path": "fitnah/bofs/lateral_movement/unexpireuser.x64.o",
+    "arch": "x64"
+  }
+}

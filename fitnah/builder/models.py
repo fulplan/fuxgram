@@ -52,13 +52,19 @@ class BuildRequest:
     # new: shellcode pipeline method
     shellcode_method: str   = "donut"  # "donut" | "raw" | "none"
 
-    # new: signing
+    # signing
     sign:             bool  = False    # run signtool after build
     cert_path:        str   = ""       # path to .pfx certificate
     cert_password:    str   = ""       # PFX password
 
-    # new: compression
+    # compression
     compress:         bool  = False    # LZMA compress the payload
+
+    # mTLS — per-agent leaf cert (populated by engine if mtls_enabled=True)
+    mtls_enabled:     bool  = False    # bake unique mTLS cert into implant config
+    mtls_cert_pem:    bytes = b""      # agent leaf cert (set by BuildEngine)
+    mtls_key_pem:     bytes = b""      # agent leaf key  (set by BuildEngine)
+    mtls_ca_pem:      bytes = b""      # CA cert for server verification
 
     # derived
     output_name: str = ""       # filled in by engine if blank

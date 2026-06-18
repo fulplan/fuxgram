@@ -34,6 +34,11 @@ class BuildEngine:
     def build(self, req: BuildRequest) -> BuildResult:
         """Dispatch to the appropriate builder based on req.format."""
         self._out.mkdir(parents=True, exist_ok=True)
+
+        # Issue per-agent mTLS cert if requested
+        if getattr(req, "mtls_enabled", False) and not req.mtls_cert_pem:
+            req = self._issue_mtls_cert(req)
+
         dispatch = {
             OutputFormat.PS1:       self._build_ps1,
             OutputFormat.VBA:       self._build_vba,
@@ -250,6 +255,23 @@ class BuildEngine:
             result.warnings.append(f"signtool failed: {exc}")
 
         return result
+
+    # ── mTLS cert issuance ────────────────────────────────────────────────
+
+    @staticmethod
+    def _issue_mtls_cert(req: BuildRequest) -> BuildRequest:
+        """Issue a per-agent leaf cert via the CA and bake it into the BuildRequest."""
+        try:
+            from fitnah.c2.certs.cert_authority import CertAuthority
+            ca          = CertAuthority()
+            cert_pem, key_pem = ca.issue(req.agent_id)
+            req.mtls_cert_pem = cert_pem
+            req.mtls_key_pem  = key_pem
+            req.mtls_ca_pem   = ca.ca_cert_pem()
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning("[builder] mTLS cert issue failed: %s", exc)
+        return req
 
     # ── helpers ───────────────────────────────────────────────────────────
 
