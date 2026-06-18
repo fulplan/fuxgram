@@ -1,0 +1,636 @@
+2026-06-18 04:08:32  INFO      fitnah.main                     Created project: op_20260618
+2026-06-18 04:08:33  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 04:08:34  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 04:08:34  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 04:10:45  INFO      fitnah.main                     Console exited — waiting for C2 loop to stop...
+2026-06-18 04:10:45  INFO      fitnah.main                     Shutdown complete.
+2026-06-18 04:10:45  ERROR     asyncio                         Task was destroyed but it is pending!
+task: <Task pending name='Application:8684845258:update_fetcher' coro=<Application._update_fetcher() running at C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_application.py:1233> wait_for=<Future pending cb=[Task.task_wakeup()]>>
+2026-06-18 04:10:45  ERROR     asyncio                         Task was destroyed but it is pending!
+task: <Task pending name='Updater:start_polling:polling_task' coro=<network_retry_loop() running at C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_utils\networkloop.py:161> wait_for=<Future pending cb=[Task.task_wakeup()]>>
+2026-06-18 04:10:45  ERROR     asyncio                         Task was destroyed but it is pending!
+task: <Task pending name='Task-12' coro=<Event.wait() running at C:\Python314\Lib\asyncio\locks.py:200>>
+2026-06-18 04:10:45  ERROR     asyncio                         Task was destroyed but it is pending!
+task: <Task pending name='Task-11' coro=<Updater._start_polling.<locals>.polling_action_cb() running at C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_updater.py:338>>
+2026-06-18 04:10:47  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 04:10:47  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 04:10:49  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 04:10:49  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 04:10:49  INFO      fitnah.c2.http_listener         [http] listener started on http://0.0.0.0:8888
+2026-06-18 04:10:49  INFO      fitnah.orchestration.kernel     [kernel] 73 plugin(s) loaded
+2026-06-18 04:10:49  INFO      fitnah.orchestration.kernel     [kernel] started — 73 plugin(s) loaded  transport=telegram
+2026-06-18 04:10:49  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules
+2026-06-18 04:10:49  INFO      fitnah.c2.server                [c2] message loop started
+2026-06-18 04:11:49  INFO      fitnah.main                     Console exited — waiting for C2 loop to stop...
+2026-06-18 04:11:49  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:49  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:50  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:50  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:50  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:50  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:50  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:50  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:50  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:50  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:50  ERROR     telegram.ext.Updater            Error while calling `get_updates` one more time to mark all fetched updates. Suppressing error to ensure graceful shutdown. When polling for updates is restarted, updates may be fetched again. Please adjust timeouts via `ApplicationBuilder` or the parameter `get_updates_request` of `Bot`.
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 305, in _request_wrapper
+    code, payload = await self.do_request(
+                    ^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_httpxrequest.py", line 254, in do_request
+    raise RuntimeError("This HTTPXRequest is not initialized!")
+RuntimeError: This HTTPXRequest is not initialized!
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_updater.py", line 400, in _get_updates_cleanup
+    await self.bot.get_updates(
+    ...<4 lines>...
+    )
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 680, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 4767, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 712, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 378, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 741, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 317, in _request_wrapper
+    raise NetworkError(f"Unknown error in HTTP implementation: {exc!r}") from exc
+telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError('This HTTPXRequest is not initialized!')
+2026-06-18 04:11:50  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:50  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:50  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:50  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:50  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:50  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:51  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:51  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:51  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:51  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:51  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:51  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:51  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:51  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:51  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:51  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:51  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:51  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:52  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:52  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:11:52  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:11:52  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:11:52  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:11:52  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:37:39  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 04:37:40  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 04:37:41  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 04:37:41  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 04:37:41  INFO      fitnah.c2.http_listener         [http] listener started on http://0.0.0.0:8888
+2026-06-18 04:37:41  INFO      fitnah.orchestration.kernel     [kernel] 73 plugin(s) loaded
+2026-06-18 04:37:41  INFO      fitnah.orchestration.kernel     [kernel] started — 73 plugin(s) loaded  transport=telegram
+2026-06-18 04:37:41  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules
+2026-06-18 04:37:41  INFO      fitnah.c2.server                [c2] message loop started
+2026-06-18 04:41:08  INFO      fitnah.main                     Console exited — waiting for C2 loop to stop...
+2026-06-18 04:41:08  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:08  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:08  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:08  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:08  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:08  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:08  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:08  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:08  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:08  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:09  ERROR     telegram.ext.Updater            Error while calling `get_updates` one more time to mark all fetched updates. Suppressing error to ensure graceful shutdown. When polling for updates is restarted, updates may be fetched again. Please adjust timeouts via `ApplicationBuilder` or the parameter `get_updates_request` of `Bot`.
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 305, in _request_wrapper
+    code, payload = await self.do_request(
+                    ^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_httpxrequest.py", line 254, in do_request
+    raise RuntimeError("This HTTPXRequest is not initialized!")
+RuntimeError: This HTTPXRequest is not initialized!
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_updater.py", line 400, in _get_updates_cleanup
+    await self.bot.get_updates(
+    ...<4 lines>...
+    )
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 680, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 4767, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 712, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 378, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 741, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 317, in _request_wrapper
+    raise NetworkError(f"Unknown error in HTTP implementation: {exc!r}") from exc
+telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError('This HTTPXRequest is not initialized!')
+2026-06-18 04:41:09  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:09  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:09  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:09  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:09  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:09  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:09  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:09  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:09  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:09  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:09  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:09  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:09  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:09  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:10  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:10  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:10  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:11  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:11  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:11  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:12  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:41:12  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:41:12  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:41:13  INFO      fitnah.main                     Shutdown complete.
+2026-06-18 04:41:16  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 04:41:17  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 04:41:19  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 04:41:19  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 04:41:19  INFO      fitnah.c2.http_listener         [http] listener started on http://0.0.0.0:8888
+2026-06-18 04:41:19  INFO      fitnah.orchestration.kernel     [kernel] 73 plugin(s) loaded
+2026-06-18 04:41:19  INFO      fitnah.orchestration.kernel     [kernel] started — 73 plugin(s) loaded  transport=telegram
+2026-06-18 04:41:19  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules
+2026-06-18 04:41:19  INFO      fitnah.c2.server                [c2] message loop started
+2026-06-18 04:43:21  INFO      fitnah.main                     Console exited — waiting for C2 loop to stop...
+2026-06-18 04:43:21  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:21  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:22  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:22  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:22  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:22  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:22  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:22  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:22  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:22  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:23  ERROR     telegram.ext.Updater            Error while calling `get_updates` one more time to mark all fetched updates. Suppressing error to ensure graceful shutdown. When polling for updates is restarted, updates may be fetched again. Please adjust timeouts via `ApplicationBuilder` or the parameter `get_updates_request` of `Bot`.
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 305, in _request_wrapper
+    code, payload = await self.do_request(
+                    ^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_httpxrequest.py", line 254, in do_request
+    raise RuntimeError("This HTTPXRequest is not initialized!")
+RuntimeError: This HTTPXRequest is not initialized!
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_updater.py", line 400, in _get_updates_cleanup
+    await self.bot.get_updates(
+    ...<4 lines>...
+    )
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 680, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 4767, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 712, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 378, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 741, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 317, in _request_wrapper
+    raise NetworkError(f"Unknown error in HTTP implementation: {exc!r}") from exc
+telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError('This HTTPXRequest is not initialized!')
+2026-06-18 04:43:23  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:23  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:23  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:23  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:23  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:23  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:24  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:24  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:24  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:24  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:24  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:24  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:24  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:24  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:24  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:24  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:24  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:24  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:24  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:25  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:25  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:25  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:25  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:25  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:25  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:25  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:25  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:25  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:26  INFO      fitnah.orchestration.scheduler  [scheduler] stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.http_listener         [http] listener stopped
+2026-06-18 04:43:26  INFO      fitnah.c2.transport.telegram    [telegram] disconnected
+2026-06-18 04:43:26  INFO      fitnah.orchestration.kernel     [kernel] stopped
+2026-06-18 04:43:27  INFO      fitnah.main                     Shutdown complete.
+2026-06-18 04:43:29  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 04:43:29  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 04:43:31  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 04:43:31  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 04:43:31  INFO      fitnah.c2.http_listener         [http] listener started on http://0.0.0.0:8888
+2026-06-18 04:43:31  INFO      fitnah.orchestration.kernel     [kernel] 73 plugin(s) loaded
+2026-06-18 04:43:31  INFO      fitnah.orchestration.kernel     [kernel] started — 73 plugin(s) loaded  transport=telegram
+2026-06-18 04:43:31  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules
+2026-06-18 05:34:59  ERROR     telegram.ext.Updater            Error while calling `get_updates` one more time to mark all fetched updates. Suppressing error to ensure graceful shutdown. When polling for updates is restarted, updates may be fetched again. Please adjust timeouts via `ApplicationBuilder` or the parameter `get_updates_request` of `Bot`.
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 305, in _request_wrapper
+    code, payload = await self.do_request(
+                    ^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_httpxrequest.py", line 254, in do_request
+    raise RuntimeError("This HTTPXRequest is not initialized!")
+RuntimeError: This HTTPXRequest is not initialized!
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_updater.py", line 400, in _get_updates_cleanup
+    await self.bot.get_updates(
+    ...<4 lines>...
+    )
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 680, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 4767, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 712, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\ext\_extbot.py", line 378, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\_bot.py", line 741, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\C4\AppData\Roaming\Python\Python314\site-packages\telegram\request\_baserequest.py", line 317, in _request_wrapper
+    raise NetworkError(f"Unknown error in HTTP implementation: {exc!r}") from exc
+telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError('This HTTPXRequest is not initialized!')
+2026-06-18 05:35:07  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 05:35:07  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 05:35:09  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 05:35:09  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 05:35:09  INFO      fitnah.c2.http_listener         [http] listener started on http://0.0.0.0:8888
+2026-06-18 05:35:09  INFO      fitnah.orchestration.kernel     [kernel] 74 plugin(s) loaded
+2026-06-18 05:35:09  INFO      fitnah.orchestration.kernel     [kernel] started — 74 plugin(s) loaded  transport=telegram
+2026-06-18 05:35:09  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules

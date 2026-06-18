@@ -1,0 +1,7 @@
+python-telegram-bot[job-queue]>=21.0
+discord.py>=2.3
+pyyaml>=6.0
+prompt_toolkit>=3.0
+cryptography>=41.0        # AES-256-GCM for builder (optional but recommended)
+pytest>=7.0               # dev
+pytest-asyncio>=0.23      # dev
