@@ -36,7 +36,7 @@
 //#include <winternl.h>
 //#include <intrin.h>
 
-#include "../../common/ReflectiveDLLInjection.h"
+#include "ReflectiveDLLInjection.h"
 
 // Enable this define to turn on locking of memory to prevent paging
 #define ENABLE_STOPPAGING

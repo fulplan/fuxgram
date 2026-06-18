@@ -1,0 +1,32 @@
+{
+  "Blackout.sys": {
+    "description": "MSI Afterburner / iqvw64e.sys variant — arbitrary process termination via kernel IOCTL",
+    "source": "https://github.com/ZeroMemoryEx/Blackout",
+    "license": "MIT",
+    "device": "\\\\.\\Blackout",
+    "ioctl_init":      "0x9876C004",
+    "ioctl_terminate": "0x9876C094",
+    "used_by": ["kill_edr"],
+    "sha256_note": "verify before use — compare against original repo"
+  },
+  "RTCore64.sys": {
+    "description": "MSI RTCore64 — arbitrary kernel memory read/write (CVE-2019-16098)",
+    "source": "https://github.com/myzxcg/RealBlindingEDR (3.sys)",
+    "cve": "CVE-2019-16098",
+    "license": "MIT",
+    "device": "\\\\.\\RTCore64",
+    "ioctl_read":  "0x70002048",
+    "ioctl_write": "0x7000204c",
+    "used_by": ["blind_edr"]
+  },
+  "DBUtil_2_3.sys": {
+    "description": "Dell DBUtil 2.3 — arbitrary kernel memory read/write (CVE-2021-21551)",
+    "source": "https://github.com/myzxcg/RealBlindingEDR (4.sys)",
+    "cve": "CVE-2021-21551",
+    "license": "MIT",
+    "device": "\\\\.\\DBUtil_2_3",
+    "ioctl_read":  "0x9B0C1EC4",
+    "ioctl_write": "0x9B0C1EC8",
+    "used_by": ["blind_edr"]
+  }
+}

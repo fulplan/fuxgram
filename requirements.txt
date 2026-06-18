@@ -5,3 +5,4 @@ prompt_toolkit>=3.0
 cryptography>=41.0        # AES-256-GCM for builder (optional but recommended)
 pytest>=7.0               # dev
 pytest-asyncio>=0.23      # dev
+dnslib>=0.9.23            # DNS C2 transport (operator-side authoritative NS)

