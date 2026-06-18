@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdarg.h>
+#include "ApiSetMap.h"
 
 /* ── COFF structures ─────────────────────────────────────────────────────── */
 
@@ -235,6 +236,21 @@ static PVOID _resolve_win32(const char *dll_name, const char *func_name)
     /* Convert dll_name to wide */
     wchar_t wdll[128] = { 0 };
     for (int i = 0; dll_name[i] && i < 127; i++) wdll[i] = (wchar_t)dll_name[i];
+
+    /* Resolve api-ms-win-* and ext-ms-win-* virtual module names via
+     * the PEB's ApiSetMap (PEzor/ApiSetMap.c — Cylance, BSD-3).
+     * Without this, GetModuleHandleW("api-ms-win-core-memory-l1-1-0.dll")
+     * returns NULL even though the functions are in kernelbase.dll.        */
+    if (_wcsnicmp(wdll, L"api-ms-win-", 11) == 0 ||
+        _wcsnicmp(wdll, L"ext-ms-win-", 11) == 0)
+    {
+        SIZE_T rlen = 0;
+        PWCHAR real = GetRedirectedName(L"", wdll, &rlen);
+        if (real && rlen > 0 && rlen < 128) {
+            wcsncpy(wdll, real, rlen);
+            wdll[rlen] = L'\0';
+        }
+    }
 
     HMODULE h = GetModuleHandleW(wdll);
     if (!h) h = LoadLibraryW(wdll);

