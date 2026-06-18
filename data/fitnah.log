@@ -634,3 +634,9 @@ telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError(
 2026-06-18 05:35:09  INFO      fitnah.orchestration.kernel     [kernel] 74 plugin(s) loaded
 2026-06-18 05:35:09  INFO      fitnah.orchestration.kernel     [kernel] started — 74 plugin(s) loaded  transport=telegram
 2026-06-18 05:35:09  INFO      fitnah.orchestration.scheduler  [scheduler] started with 0 schedules
+2026-06-18 06:35:19  INFO      fitnah.main                     Loaded project: op_20260618
+2026-06-18 06:35:19  INFO      fitnah.orchestration.kernel     [kernel] Discord token not configured — fallback disabled
+2026-06-18 06:35:21  WARNING   fitnah.c2.router                [router] telegram   connect attempt 1/3 failed: The token `YOUR_TELEGRAM_BOT_TOKEN` was rejected by the server.
+2026-06-18 06:35:25  WARNING   fitnah.c2.router                [router] telegram   connect attempt 2/3 failed: The token `YOUR_TELEGRAM_BOT_TOKEN` was rejected by the server.
+2026-06-18 06:35:29  WARNING   fitnah.c2.router                [router] telegram   connect attempt 3/3 failed: The token `YOUR_TELEGRAM_BOT_TOKEN` was rejected by the server.
+2026-06-18 06:35:29  ERROR     fitnah.c2.router                [router] telegram   could not connect after 3 attempts

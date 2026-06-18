@@ -267,17 +267,27 @@ class FitnahConsole:
             idx = args.index("-s")
             agent_id = args[idx + 1] if idx + 1 < len(args) else agent_id
 
-        if not agent_id:
-            _err("No session selected. Use: sessions -i <id>")
-            return
         if not self._active_module:
             _err("No module loaded. Use: use <plugin>")
             return
 
-        session = self._kernel.sessions.get(agent_id)
-        if not session:
-            _err(f"Session not found: {agent_id}")
+        # Check whether this plugin requires a live session (ctx-dependent)
+        plugin = self._kernel.plugins.get(self._active_module)
+        _offline_categories = {"initial_access"}
+        needs_session = (
+            plugin is None
+            or getattr(plugin, "CATEGORY", "") not in _offline_categories
+        )
+
+        if needs_session and not agent_id:
+            _err("No session selected. Use: sessions -i <id>  (or pick an offline plugin)")
             return
+
+        if agent_id:
+            session = self._kernel.sessions.get(agent_id)
+            if not session:
+                _err(f"Session not found: {agent_id}")
+                return
 
         _info(f"Running {self._active_module} against {session.hostname}...")
         result = self._run_async(
@@ -1093,6 +1103,26 @@ _HELP_TEXT = """
   status                      Show server status
   project info                Show current project details
   project list                List all projects
+
+  INITIAL ACCESS  (offline — no active session required)
+  ────────────────────────────────────────────────────────────
+  use phish_link              Generate HTML/URL/.url lure artifacts
+  use macro_drop              Generate obfuscated VBA / HTA stager
+  use phish_email             Send spear-phishing emails via SMTP
+    set smtp_host <host>
+    set from_addr <addr>
+    set to <victim@target.com>
+    set payload_url <http://your-ip:8080/d/<token>>
+    set attachment <path/to/doc>
+    run
+  use delivery_server         Start payload-hosting HTTP server
+    set action start          Start server (default port 8080)
+    set action add_payload    Register a file for delivery
+    set payload <path>        File to serve
+    set one_time true         Burn token after first download
+    set action log            Show access / download events
+    set action stop           Stop the server
+    run
 
   GENERAL
   ────────────────────────────────────────────────────────────

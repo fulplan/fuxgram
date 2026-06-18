@@ -263,8 +263,12 @@ class Kernel:
         if not plugin:
             return ModuleResult.err(f"Plugin not found: {plugin_name!r}")
 
-        session = self.sessions.get(agent_id)
-        if not session:
+        session = self.sessions.get(agent_id) if agent_id else None
+        # Offline plugins (initial_access generators, delivery_server) pass ctx=None
+        # and must tolerate session=None.  Live plugins return ModuleResult.err if
+        # ctx is None.  Only block here if the plugin explicitly requires a session
+        # AND none is available.
+        if not session and agent_id:
             return ModuleResult.err(f"No session for agent_id={agent_id!r}")
 
         try:
@@ -272,9 +276,12 @@ class Kernel:
         except ValueError as exc:
             return ModuleResult.err(f"Parameter error: {exc}")
 
-        # build context — gives plugin sync access to C2 dispatch
-        loop = asyncio.get_event_loop()
-        ctx  = PluginContext(session=session, c2=self.c2, loop=loop, timeout=self.cfg.task_timeout)
+        # Offline mode: no session, no context
+        if session is None:
+            ctx = None
+        else:
+            loop = asyncio.get_event_loop()
+            ctx  = PluginContext(session=session, c2=self.c2, loop=loop, timeout=self.cfg.task_timeout)
 
         try:
             result = plugin.run(session, params, ctx=ctx)

